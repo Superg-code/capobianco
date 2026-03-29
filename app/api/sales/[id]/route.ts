@@ -60,9 +60,9 @@ export async function PATCH(
     .eq("id", saleId)
     .single();
 
-  const c  = (fullSale as Record<string, unknown>)?.contacts as Record<string, unknown> | null;
-  const sp = (fullSale as Record<string, unknown>)?.salesperson as Record<string, unknown> | null;
-  const { contacts: _c, salesperson: _sp, ...rest } = (fullSale ?? {}) as Record<string, unknown>;
+  const { contacts, salesperson, ...rest } = (fullSale ?? {}) as Record<string, unknown>;
+  const c  = contacts   as Record<string, unknown> | null;
+  const sp = salesperson as Record<string, unknown> | null;
   const sale = { ...rest, first_name: c?.first_name, last_name: c?.last_name, company: c?.company, city: c?.city, salesperson_name: sp?.name };
 
   return NextResponse.json({ sale });

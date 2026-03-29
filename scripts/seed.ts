@@ -1,46 +1,40 @@
-import Database from "better-sqlite3";
+import { createClient } from "@supabase/supabase-js";
 import bcrypt from "bcryptjs";
-import path from "path";
 
-const DB_PATH = path.join(process.cwd(), "capobianco.db");
-const db = new Database(DB_PATH);
+const supabaseUrl = process.env.SUPABASE_URL ?? "";
+const supabaseKey = process.env.SUPABASE_ANON_KEY ?? "";
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+if (!supabaseUrl || !supabaseKey) {
+  console.error("Mancano SUPABASE_URL e SUPABASE_ANON_KEY nelle variabili d'ambiente");
+  process.exit(1);
+}
 
-// Ensure tables exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    name          TEXT NOT NULL,
-    email         TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role          TEXT NOT NULL DEFAULT 'salesperson' CHECK(role IN ('admin','salesperson')),
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-const adminHash = bcrypt.hashSync("Admin1234!", 10);
-db.prepare(
-  `INSERT OR IGNORE INTO users (name, email, password_hash, role)
-   VALUES ('Amministratore', 'admin@capobianco.it', ?, 'admin')`
-).run(adminHash);
+const users = [
+  { name: "Amministratore",  email: "admin@capobianco.it",        password: "Admin1234!",  role: "admin" as const },
+  { name: "Mario Rossi",     email: "mario.rossi@capobianco.it",  password: "Venditore1!", role: "salesperson" as const },
+  { name: "Luca Bianchi",    email: "luca.bianchi@capobianco.it", password: "Venditore1!", role: "salesperson" as const },
+];
 
-// Demo salesperson
-const salesHash = bcrypt.hashSync("Venditore1!", 10);
-db.prepare(
-  `INSERT OR IGNORE INTO users (name, email, password_hash, role)
-   VALUES ('Mario Rossi', 'mario.rossi@capobianco.it', ?, 'salesperson')`
-).run(salesHash);
+async function seed() {
+  for (const u of users) {
+    const password_hash = bcrypt.hashSync(u.password, 10);
+    const { error } = await supabase
+      .from("users")
+      .upsert({ name: u.name, email: u.email, password_hash, role: u.role }, { onConflict: "email" });
 
-db.prepare(
-  `INSERT OR IGNORE INTO users (name, email, password_hash, role)
-   VALUES ('Luca Bianchi', 'luca.bianchi@capobianco.it', ?, 'salesperson')`
-).run(salesHash);
+    if (error) {
+      console.error(`Errore utente ${u.email}:`, error.message);
+    } else {
+      console.log(`✅ ${u.name} (${u.email})`);
+    }
+  }
 
-console.log("✅ Utenti creati:");
-console.log("   Admin:      admin@capobianco.it / Admin1234!");
-console.log("   Venditore:  mario.rossi@capobianco.it / Venditore1!");
-console.log("   Venditore:  luca.bianchi@capobianco.it / Venditore1!");
+  console.log("\nCredenziali:");
+  console.log("   Admin:     admin@capobianco.it / Admin1234!");
+  console.log("   Venditore: mario.rossi@capobianco.it / Venditore1!");
+  console.log("   Venditore: luca.bianchi@capobianco.it / Venditore1!");
+}
 
-db.close();
+seed().catch(console.error);
