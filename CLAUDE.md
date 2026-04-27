@@ -14,6 +14,10 @@ npm run db:seed      # Create initial users (run once after schema.sql)
 
 There are no automated tests. Manual verification is done via `npm run dev`.
 
+## Deployment
+
+GitHub repo: `https://github.com/Superg-code/capobianco.git` → Vercel auto-deploys on push to `main` → `capobiancocrm.com`.
+
 ## Environment Variables
 
 Required in `.env.local` (never committed):
@@ -40,15 +44,18 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=<string for Meta webhook verification>
 
 `lib/supabase.ts` exports a typed singleton `supabase` client (`createClient<Database>`) with a `global._supabase` pattern to survive Next.js hot-reloads. The `Database` type is in `types/supabase.ts` with explicit non-circular `Row`/`Insert`/`Update` types per table — required because Supabase's generic inference collapses to `never` without them.
 
-Tables: `users`, `contacts`, `sales`, `activities`, `interactions`, `products`, `notification_queue`.
+Tables: `users`, `contacts`, `sales`, `activities`, `interactions`, `products`, `notification_queue`, `appointments`.
 
-`lib/db.ts` exports only TypeScript types (`User`, `Contact`, `Sale`, `Activity`) — no database connection.
+`lib/db.ts` exports only TypeScript types (`User`, `Contact`, `Sale`, `Activity`, `Appointment`) — no database connection.
 
 ### Auth
 - JWT stored in an **httpOnly cookie** named `crm_token` (8h expiry).
 - `lib/auth.ts`: `signToken` / `verifyToken` / `getSession` (server-side, reads `next/headers`).
 - `lib/api-auth.ts`: `getSessionOrToken(req)` — checks cookie JWT first, then falls back to `Authorization: Bearer <CRM_API_TOKEN>` for n8n. Returns a synthetic admin payload for the Bearer path.
-- `middleware.ts`: Edge Runtime — Bearer token requests to `/api/` are passed through; all other unauthenticated requests redirect to `/login`; non-admins are blocked from `/impostazioni`. Public paths (no auth required): `/login`, `/api/auth/login`, `/cancellazione-dati`, `/privacy`.
+- `middleware.ts`: Edge Runtime — Bearer token requests to `/api/` are passed through; all other unauthenticated requests redirect to `/login`; non-admins are blocked from `/impostazioni`. Public paths: `/login`, `/api/auth/login`, `/cancellazione-dati`, `/privacy`, `/attiva-account`, `/api/users/activate`.
+
+### User Invite Flow
+Admin creates a salesperson in `/impostazioni` with nome/cognome/zona/email — no password. The API (`POST /api/users`) generates a random `activation_token` (32-byte hex), stores it in `users.activation_token`, and returns the token so the UI can display an activation link. The salesperson visits `/attiva-account?token=<hex>` (public route), which validates the token via `GET /api/users/activate` and lets them set their password via `POST /api/users/activate`. On activation, `activation_token` is cleared from the DB. The `users.zona` field stores the salesperson's geographic zone — used for WhatsApp appointment routing.
 
 ### Route Groups
 - `app/(auth)/` — unauthenticated pages (login).
@@ -56,12 +63,12 @@ Tables: `users`, `contacts`, `sales`, `activities`, `interactions`, `products`, 
 - `app/api/` — Route Handlers. UI routes use `getSession()`; n8n-facing routes use `getSessionOrToken(req)`.
 
 ### Data Access Pattern
-Server Components query Supabase directly. Client Components fetch via API routes. No shared state library — Server Components pass initial data as props (e.g., `LeaderboardClient`, `SalesKanban`, `UsersManager`).
+Server Components query Supabase directly. Client Components fetch via API routes. No shared state library — Server Components pass initial data as props (e.g., `LeaderboardClient`, `SalesKanban`, `UsersManager`, `CalendarioClient`).
 
-Nested join results from Supabase (e.g., `contacts(first_name)`, `salesperson:users!salesperson_id(name)`) are flattened inline in each page/route via destructuring:
-```ts
-const { contacts, salesperson, ...rest } = row as Record<string, unknown>;
-```
+Nested join results from Supabase (e.g., `contact:contacts(first_name,last_name)`, `salesperson:users!salesperson_id(name)`) come back as nested objects and are typed inline in each route.
+
+### Appointments
+`/api/appointments` (GET/POST) and `/api/appointments/[id]` (PATCH/DELETE) use `getSessionOrToken` — accessible from both browser and n8n. Salespersons see only their own appointments; admins see all. POST also updates `contacts.appointment_date` and `contacts.appointment_status`. The `/calendario` page is a full monthly calendar with chip-per-day display and a chronological list below the grid.
 
 ### Leaderboard RPC
 The leaderboard uses a PostgreSQL function `get_leaderboard(date_from TIMESTAMPTZ)` in `scripts/schema.sql`, called via `supabase.rpc("get_leaderboard", { date_from })`. The `GET /api/leaderboard` route accepts `?period=all|month|quarter|year` and calculates `date_from` accordingly.
@@ -84,7 +91,7 @@ Statuses: `lead` → `prospect` → `trattativa` → `vinto` → `perso`.
 
 ### Role-Based Access
 - `admin`: all contacts and sales, can delete, manages users at `/impostazioni`.
-- `salesperson`: all contacts, only their own sales.
+- `salesperson`: all contacts, only their own sales and appointments.
 - Enforced server-side in every API route (middleware alone is not sufficient).
 
 ### n8n Integration
@@ -92,12 +99,12 @@ API routes that n8n calls accept `Authorization: Bearer <CRM_API_TOKEN>` via `li
 
 **WhatsApp conversation start**: `POST /api/contacts/[id]/start-whatsapp` is called by the CRM UI. It validates the contact has a phone and no active session, then POSTs to `{N8N_WEBHOOK_BASE_URL}/webhook/capobianco/avvia-conversazione` with contact data including a generated `conversation_session_id`.
 
-**Session-based routing for WhatsApp agents**: workflow `01b AI Turn Handler` uses a WAIT node with `resume: "webhook"`. Before suspending, `HTTP_Save_Session` PATCHes `contacts.n8n_session_id = $execution.resumeUrl` via Supabase REST. The trigger has `responseMode: "responseNode"` and a `RESPOND_Ack` node fires before the WAIT — this means the caller gets an immediate `{"started": true}` response while 01b continues in background as a "waiting" execution. When a customer reply arrives, `00 WhatsApp Ingresso` checks `n8n_session_id` — if set, POSTs to the resumeUrl (resuming 01b); if empty, triggers 01b fresh as a new session. After WAIT resumes, `HTTP_Clear_Session` sets `n8n_session_id` to null.
+**Session-based routing for WhatsApp agents**: workflow `01b AI Turn Handler` uses a WAIT node with `resume: "webhook"`. Before suspending, `HTTP_Save_Session` PATCHes `contacts.n8n_session_id = $execution.resumeUrl` via Supabase REST. The trigger has `responseMode: "responseNode"` and a `RESPOND_Ack` node fires before the WAIT — this means the caller gets an immediate `{"started": true}` response while 01b continues in background. When a customer reply arrives, `00 WhatsApp Ingresso` checks `n8n_session_id` — if set, POSTs to the resumeUrl (resuming 01b); if empty, triggers 01b fresh. After WAIT resumes, `HTTP_Clear_Session` sets `n8n_session_id` to null.
 
-`notification_queue` table stores outbound emails queued by `/api/notifications/email`. No SMTP sender is wired up by default — configure `SMTP_*` variables in `.env.local` to enable sending.
+`notification_queue` table stores outbound emails queued by `/api/notifications/email`. No SMTP sender is wired up by default.
 
 ### Products Search
-`GET /api/products/search?categoria=...&provincia=...&budget=...` returns scored product matches. Products are stored in the `products` table (seeded separately from `scripts/schema.sql`).
+`GET /api/products/search?categoria=...&provincia=...&budget=...` returns scored product matches. Products are stored in the `products` table.
 
 ## Dashboard pages
 
@@ -115,9 +122,29 @@ API routes that n8n calls accept `Authorization: Bearer <CRM_API_TOKEN>` via `li
 | Workflow | ID |
 |---|---|
 | `00 WhatsApp Ingresso` (inbound webhook, contact lookup, triggers 01b) | `0Y24BgIZQwpJE3br` |
-| `01b AI Turn Handler` (history load, GPT-4o, WA reply) | `q0xmpvyu7PLEIDiS` |
+| `01b AI Turn Handler` (history load, GPT-4o, WA reply, appointment booking) | `q0xmpvyu7PLEIDiS` |
 
-`HTTP_Load_History` in 01b queries `interactions` filtered by `contact_id` + `session_id` (not just contact_id). The `CODE_Build_AI_Prompt` node runs `runOnceForAllItems` and uses `$input.all()` to collect the full history; the last inbound row (just saved) is popped from the array before appending the current `message_text` at the end.
+### Workflow 01b node sequence (17 nodes)
+
+```
+TRIGGER_AI_Turn → RESPOND_Ack → HTTP_Save_Inbound → HTTP_Load_History
+  → CODE_Build_AI_Prompt → HTTP_OpenAI_Analyze → CODE_Parse_Response
+  → CODE_Set_Direct_Reply → HTTP_WA_Send_Reply → HTTP_Save_Outbound
+  → IF_Appointment_Requested
+      [true]  → HTTP_Get_Salesperson_By_Zone → CODE_Pick_Salesperson
+                → HTTP_Create_Appointment → HTTP_Update_Contact_Appointment
+                → HTTP_Save_Summary
+      [false] → HTTP_Save_Summary
+  (IF_End_Conversation is present but disconnected — kept for reference)
+```
+
+Key implementation notes:
+- `CODE_Build_AI_Prompt` runs `runOnceForAllItems`, uses `$input.all()` to collect full interaction history. Injects today's date so GPT-4o can resolve relative days ("venerdì prossimo") to exact ISO dates.
+- AI response format: natural text first, then `---METADATA---` separator, then JSON metadata. `CODE_Parse_Response` splits on the separator. **Do not re-add `response_format: {type: "json_object"}` to the OpenAI call** — it breaks natural language output.
+- `IF_Appointment_Requested` condition: `String($json.appointment_requested) == "true"` (string equality). **Do not use `boolean.true` / `singleValue` operator** — it silently evaluates false when the value comes from a Code node.
+- Appointment zone routing: `HTTP_Get_Salesperson_By_Zone` queries `users?zona=ilike.*{appointment_zone}*`, `CODE_Pick_Salesperson` takes the first match. Falls back to `trigger.salesperson_id` if no zone match found.
+- `HTTP_Save_Summary` and `HTTP_Create_Appointment` reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*` — because after `HTTP_Save_Outbound` (Supabase 204), `$json` is empty.
+- Workflow 00 fetches `created_by_id` from contacts and passes it as `salesperson_id` to 01b.
 
 ## Miscellaneous
 
