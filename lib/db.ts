@@ -38,10 +38,11 @@ export type Contact = {
   appointment_status: string | null;
   outcome_appuntamento: string | null;
   prossimo_followup: string | null;
-  manychat_subscriber_id: string | null;
+  wa_contact_id: string | null;
   ultima_interazione: string | null;
   fonte: string | null;
   provincia: string | null;
+  conversation_summary: string | null;
 };
 
 export type Sale = {
@@ -52,6 +53,19 @@ export type Sale = {
   product: string | null;
   value: number | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Appointment = {
+  id: number;
+  contact_id: number;
+  salesperson_id: number;
+  title: string | null;
+  scheduled_at: string;
+  duration_minutes: number;
+  notes: string | null;
+  status: "scheduled" | "completed" | "cancelled";
   created_at: string;
   updated_at: string;
 };

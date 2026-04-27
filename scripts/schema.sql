@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   outcome_appuntamento    TEXT,
   motivo_chiusura         TEXT,
   prossimo_followup       TIMESTAMPTZ,
-  manychat_subscriber_id  TEXT,
+  wa_contact_id           TEXT,
   ultima_interazione      TIMESTAMPTZ,
   fonte                   TEXT,
   provincia               TEXT
@@ -112,6 +112,29 @@ CREATE TABLE IF NOT EXISTS notification_queue (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   sent_at      TIMESTAMPTZ
 );
+
+-- APPOINTMENTS
+CREATE TABLE IF NOT EXISTS appointments (
+  id                BIGSERIAL PRIMARY KEY,
+  contact_id        BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  salesperson_id    BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  title             TEXT,
+  scheduled_at      TIMESTAMPTZ NOT NULL,
+  duration_minutes  INT NOT NULL DEFAULT 60,
+  notes             TEXT,
+  status            TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','completed','cancelled')),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE appointments DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_appointments_contact     ON appointments(contact_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_salesperson ON appointments(salesperson_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_scheduled   ON appointments(scheduled_at);
+
+-- MIGRATIONS: run manually in Supabase SQL Editor if tables already exist
+-- ALTER TABLE contacts ADD COLUMN IF NOT EXISTS conversation_summary TEXT;
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS zona TEXT;
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token TEXT;
 
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_contacts_email    ON contacts(email);

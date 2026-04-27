@@ -10,11 +10,16 @@ export async function GET(req: Request) {
   const contactId = url.searchParams.get("contact_id");
   if (!contactId) return NextResponse.json({ error: "contact_id obbligatorio" }, { status: 400 });
 
-  const { data: interactions } = await supabase
+  const sessionId = url.searchParams.get("session_id");
+
+  let query = supabase
     .from("interactions")
     .select("*")
-    .eq("contact_id", Number(contactId))
-    .order("timestamp", { ascending: false });
+    .eq("contact_id", Number(contactId));
+
+  if (sessionId) query = query.eq("session_id", sessionId);
+
+  const { data: interactions } = await query.order("timestamp", { ascending: true });
 
   return NextResponse.json({ interactions: interactions ?? [] });
 }

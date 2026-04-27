@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { getSession } from "@/lib/auth";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -11,7 +12,7 @@ export async function GET() {
 
   const { data: users } = await supabase
     .from("users")
-    .select("id, name, email, role, created_at")
+    .select("id, name, email, role, zona, activation_token, created_at")
     .order("name");
 
   return NextResponse.json({ users: users ?? [] });
@@ -23,10 +24,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
   }
 
-  const { name, email, password, role } = await req.json();
+  const { first_name, last_name, zona, email, role } = await req.json();
 
-  if (!name?.trim() || !email?.trim() || !password?.trim()) {
-    return NextResponse.json({ error: "Nome, email e password sono obbligatori" }, { status: 400 });
+  if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
+    return NextResponse.json({ error: "Nome, cognome ed email sono obbligatori" }, { status: 400 });
   }
 
   const { data: existing } = await supabase
@@ -37,20 +38,25 @@ export async function POST(req: Request) {
 
   if (existing) return NextResponse.json({ error: "Email già in uso" }, { status: 409 });
 
-  const hash = bcrypt.hashSync(password, 10);
+  const activation_token = randomBytes(32).toString("hex");
+  const tempHash = bcrypt.hashSync(randomBytes(16).toString("hex"), 10);
 
-  const { data: user } = await supabase
+  const { data: user, error } = await supabase
     .from("users")
     .insert({
-      name: name.trim(),
+      name: `${first_name.trim()} ${last_name.trim()}`,
       email: email.trim().toLowerCase(),
-      password_hash: hash,
+      password_hash: tempHash,
       role: role === "admin" ? "admin" : "salesperson",
+      zona: zona?.trim() || null,
+      activation_token,
     })
-    .select("id, name, email, role, created_at")
+    .select("id, name, email, role, zona, activation_token, created_at")
     .single();
 
-  return NextResponse.json({ user }, { status: 201 });
+  if (error) return NextResponse.json({ error: "Errore nella creazione" }, { status: 500 });
+
+  return NextResponse.json({ user, activation_token }, { status: 201 });
 }
 
 export async function PATCH(req: Request) {
@@ -59,12 +65,13 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
   }
 
-  const { id, password, role } = await req.json();
+  const { id, password, role, zona } = await req.json();
   if (!id) return NextResponse.json({ error: "ID obbligatorio" }, { status: 400 });
 
-  const updates: Record<string, string> = {};
+  const updates: Record<string, string | null> = {};
   if (password) updates.password_hash = bcrypt.hashSync(password, 10);
   if (role) updates.role = role;
+  if (zona !== undefined) updates.zona = zona?.trim() || null;
 
   if (Object.keys(updates).length > 0) {
     await supabase.from("users").update(updates).eq("id", id);
@@ -72,7 +79,7 @@ export async function PATCH(req: Request) {
 
   const { data: user } = await supabase
     .from("users")
-    .select("id, name, email, role, created_at")
+    .select("id, name, email, role, zona, activation_token, created_at")
     .eq("id", id)
     .single();
 

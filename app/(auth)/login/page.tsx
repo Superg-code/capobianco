@@ -44,18 +44,38 @@ export default function LoginPage() {
       {/* Top brand bar */}
       <div className="bg-brand h-1.5 w-full" />
 
+      {/* Tractor animation strip */}
+      <div className="w-full overflow-hidden h-20 relative bg-gray-50 select-none pointer-events-none">
+        <style>{`
+          @keyframes drive-rtl {
+            0%   { transform: translateX(100vw); }
+            100% { transform: translateX(-160px); }
+          }
+          .tractor-run {
+            position: absolute;
+            bottom: 6px;
+            font-size: 3.8rem;
+            line-height: 1;
+            animation: drive-rtl 22s linear infinite;
+          }
+        `}</style>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gray-200" />
+        <span className="tractor-run" style={{ animationDelay: "0s" }}>🚜</span>
+        <span className="tractor-run" style={{ animationDelay: "11s" }}>🚜</span>
+      </div>
+
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           {/* Logo card */}
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
             {/* Header */}
-            <div className="bg-text px-8 py-7 flex flex-col items-center gap-3">
-              <div className="bg-white rounded-xl px-6 py-3">
+            <div className="bg-[#1a3464] px-8 py-7 flex flex-col items-center gap-3">
+              <div className="rounded-xl overflow-hidden">
                 <Image
-                  src="https://www.capobiancotrattori.com/wp-content/uploads/2018/07/logo-footer1.png"
+                  src="/cap.png"
                   alt="Capobianco Trattori"
-                  width={180}
-                  height={60}
+                  width={160}
+                  height={160}
                   className="object-contain"
                   unoptimized
                 />
@@ -117,9 +137,26 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="text-center text-xs text-text-muted mt-6">
-            © {new Date().getFullYear()} Capobianco Group — Sistema CRM Interno
-          </p>
+          <div className="text-center mt-6 space-y-1">
+            <p className="text-xs text-text-muted">
+              © {new Date().getFullYear()} Capobianco Group — Sistema CRM Interno
+            </p>
+            <div className="flex items-center justify-center gap-3 text-xs">
+              <a
+                href="/cancellazione-dati"
+                className="text-text-muted hover:text-brand underline underline-offset-2 transition-colors"
+              >
+                Cancellazione dati
+              </a>
+              <span className="text-gray-300">·</span>
+              <a
+                href="/privacy"
+                className="text-text-muted hover:text-brand underline underline-offset-2 transition-colors"
+              >
+                Informativa sulla privacy
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </div>

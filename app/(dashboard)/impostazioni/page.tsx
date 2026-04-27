@@ -9,7 +9,7 @@ export default async function ImpostazioniPage() {
 
   const { data: users } = await supabase
     .from("users")
-    .select("id, name, email, role, created_at")
+    .select("id, name, email, role, zona, activation_token, created_at")
     .order("name");
 
   return (

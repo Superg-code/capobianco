@@ -9,6 +9,7 @@ import {
   Trophy,
   Settings,
   Tractor,
+  CalendarDays,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -24,6 +25,7 @@ const navItems: NavItem[] = [
   { href: "/contatti", label: "Contatti", icon: Users },
   { href: "/vendite", label: "Vendite", icon: TrendingUp },
   { href: "/classifica", label: "Classifica", icon: Trophy },
+  { href: "/calendario", label: "Calendario", icon: CalendarDays },
   { href: "/impostazioni", label: "Impostazioni", icon: Settings, adminOnly: true },
 ];
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ContactForm from "@/components/contacts/ContactForm";
-import { Mail, Phone, Building2, MapPin, Edit, Trash2, Calendar } from "lucide-react";
+import { Mail, Phone, Building2, MapPin, Edit, Trash2, Calendar, MessageCircle, Loader2, CheckCircle2 } from "lucide-react";
 import type { Contact } from "@/lib/db";
 
 type Props = {
@@ -15,6 +15,9 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [waLoading, setWaLoading] = useState(false);
+  const [waStatus, setWaStatus] = useState<"idle" | "sent" | "error">("idle");
+  const [waError, setWaError] = useState<string | null>(null);
 
   async function handleDelete() {
     if (!confirm(`Eliminare ${contact.first_name} ${contact.last_name}? Questa azione è irreversibile.`)) return;
@@ -22,6 +25,27 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
     await fetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
     router.push("/contatti");
     router.refresh();
+  }
+
+  async function handleStartWhatsApp() {
+    setWaLoading(true);
+    setWaError(null);
+    try {
+      const res = await fetch(`/api/contacts/${contact.id}/start-whatsapp`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setWaError(data.error ?? "Errore durante l'avvio");
+        setWaStatus("error");
+      } else {
+        setWaStatus("sent");
+        router.refresh();
+      }
+    } catch {
+      setWaError("Errore di rete");
+      setWaStatus("error");
+    } finally {
+      setWaLoading(false);
+    }
   }
 
   if (editing) {
@@ -48,6 +72,8 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
       </div>
     );
   }
+
+  const hasActiveSession = Boolean(contact.n8n_session_id);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
@@ -115,6 +141,47 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-xs font-semibold text-text-muted mb-1">Note</p>
           <p className="text-sm text-text">{contact.notes}</p>
+        </div>
+      )}
+
+      {/* WhatsApp AI Conversation */}
+      {contact.phone && (
+        <div className="pt-3 border-t border-gray-100 space-y-2">
+          {hasActiveSession ? (
+            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              Conversazione WhatsApp attiva
+            </div>
+          ) : waStatus === "sent" ? (
+            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Messaggio inviato via WhatsApp
+            </div>
+          ) : (
+            <button
+              onClick={handleStartWhatsApp}
+              disabled={waLoading}
+              className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d] disabled:opacity-60 text-white text-sm font-semibold rounded-lg px-4 py-2.5 transition-colors"
+            >
+              {waLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <MessageCircle className="w-4 h-4" />
+              )}
+              {waLoading ? "Avvio in corso…" : "Avvia conversazione WhatsApp"}
+            </button>
+          )}
+          {waStatus === "error" && waError && (
+            <p className="text-xs text-red-500">{waError}</p>
+          )}
+        </div>
+      )}
+
+      {/* Conversation summary from AI */}
+      {contact.conversation_summary && (
+        <div className="bg-amber-50 rounded-lg p-3">
+          <p className="text-xs font-semibold text-amber-700 mb-1">Riassunto conversazione AI</p>
+          <p className="text-sm text-text">{contact.conversation_summary}</p>
         </div>
       )}
 

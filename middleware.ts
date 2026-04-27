@@ -7,7 +7,7 @@ const getSecret = () =>
     process.env.JWT_SECRET ?? "capobianco-dev-secret-change-in-prod"
   );
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/cancellazione-dati", "/privacy", "/attiva-account", "/api/users/activate"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

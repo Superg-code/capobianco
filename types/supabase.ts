@@ -7,14 +7,17 @@ export type Database = {
         Row: {
           id: number; name: string; email: string;
           password_hash: string; role: "admin" | "salesperson"; created_at: string;
+          zona: string | null; activation_token: string | null;
         };
         Insert: {
           id?: number; name: string; email: string; password_hash: string;
           role?: "admin" | "salesperson"; created_at?: string;
+          zona?: string | null; activation_token?: string | null;
         };
         Update: {
           id?: number; name?: string; email?: string; password_hash?: string;
           role?: "admin" | "salesperson"; created_at?: string;
+          zona?: string | null; activation_token?: string | null;
         };
         Relationships: [];
       };
@@ -33,8 +36,9 @@ export type Database = {
           richiede_incentivi: boolean; note_commerciali: string | null;
           appointment_date: string | null; appointment_status: string | null;
           outcome_appuntamento: string | null; motivo_chiusura: string | null;
-          prossimo_followup: string | null; manychat_subscriber_id: string | null;
+          prossimo_followup: string | null; wa_contact_id: string | null;
           ultima_interazione: string | null; fonte: string | null; provincia: string | null;
+          conversation_summary: string | null;
         };
         Insert: {
           id?: number; first_name: string; last_name: string;
@@ -50,8 +54,9 @@ export type Database = {
           richiede_incentivi?: boolean; note_commerciali?: string | null;
           appointment_date?: string | null; appointment_status?: string | null;
           outcome_appuntamento?: string | null; motivo_chiusura?: string | null;
-          prossimo_followup?: string | null; manychat_subscriber_id?: string | null;
+          prossimo_followup?: string | null; wa_contact_id?: string | null;
           ultima_interazione?: string | null; fonte?: string | null; provincia?: string | null;
+          conversation_summary?: string | null;
         };
         Update: {
           id?: number; first_name?: string; last_name?: string;
@@ -67,8 +72,9 @@ export type Database = {
           richiede_incentivi?: boolean; note_commerciali?: string | null;
           appointment_date?: string | null; appointment_status?: string | null;
           outcome_appuntamento?: string | null; motivo_chiusura?: string | null;
-          prossimo_followup?: string | null; manychat_subscriber_id?: string | null;
+          prossimo_followup?: string | null; wa_contact_id?: string | null;
           ultima_interazione?: string | null; fonte?: string | null; provincia?: string | null;
+          conversation_summary?: string | null;
         };
         Relationships: [
           { foreignKeyName: "contacts_created_by_id_fkey"; columns: ["created_by_id"]; referencedRelation: "users"; referencedColumns: ["id"] }
@@ -138,6 +144,30 @@ export type Database = {
           descrizione?: string | null; provincia?: string | null; attivo?: boolean; created_at?: string;
         };
         Relationships: [];
+      };
+      appointments: {
+        Row: {
+          id: number; contact_id: number; salesperson_id: number;
+          title: string | null; scheduled_at: string; duration_minutes: number;
+          notes: string | null; status: "scheduled" | "completed" | "cancelled";
+          created_at: string; updated_at: string;
+        };
+        Insert: {
+          id?: number; contact_id: number; salesperson_id: number;
+          title?: string | null; scheduled_at: string; duration_minutes?: number;
+          notes?: string | null; status?: "scheduled" | "completed" | "cancelled";
+          created_at?: string; updated_at?: string;
+        };
+        Update: {
+          id?: number; contact_id?: number; salesperson_id?: number;
+          title?: string | null; scheduled_at?: string; duration_minutes?: number;
+          notes?: string | null; status?: "scheduled" | "completed" | "cancelled";
+          created_at?: string; updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "appointments_contact_id_fkey"; columns: ["contact_id"]; referencedRelation: "contacts"; referencedColumns: ["id"] },
+          { foreignKeyName: "appointments_salesperson_id_fkey"; columns: ["salesperson_id"]; referencedRelation: "users"; referencedColumns: ["id"] }
+        ];
       };
       notification_queue: {
         Row: {
