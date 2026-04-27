@@ -351,6 +351,51 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
         </div>
       )}
 
+      {/* Appointment list */}
+      {appointments.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="font-heading font-semibold text-text text-base">
+              Appuntamenti — {MONTHS_IT[mo - 1]} {year}
+            </h2>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {[...appointments]
+              .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+              .map(a => (
+                <div
+                  key={a.id}
+                  onClick={() => { setSelected(a); setShowForm(false); }}
+                  className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <div className="w-14 text-center flex-shrink-0">
+                    <div className="text-xs text-text-muted uppercase font-semibold">
+                      {new Date(a.scheduled_at).toLocaleDateString("it-IT", { weekday: "short" })}
+                    </div>
+                    <div className="text-lg font-bold text-text leading-none">
+                      {new Date(a.scheduled_at).getDate()}
+                    </div>
+                  </div>
+                  <div className="w-px h-10 bg-gray-100 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-text truncate">
+                      {a.title || `${a.contact?.first_name} ${a.contact?.last_name}`}
+                    </p>
+                    <p className="text-xs text-text-muted truncate">
+                      {toLocalTimeStr(a.scheduled_at)} · {a.duration_minutes} min
+                      {a.contact?.company ? ` · ${a.contact.company}` : ""}
+                      {a.salesperson ? ` · ${a.salesperson.name}` : ""}
+                    </p>
+                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[a.status]}`}>
+                    {a.status === "scheduled" ? "Programmato" : a.status === "completed" ? "Completato" : "Annullato"}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Create / Edit form modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
