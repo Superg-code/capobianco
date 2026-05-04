@@ -24,6 +24,11 @@ export async function POST(
   const conversationSessionId = `conv_${contactId}_${Date.now()}`;
   const n8nBase = process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.srv1533428.hstgr.cloud";
 
+  await supabase
+    .from("contacts")
+    .update({ n8n_session_id: conversationSessionId })
+    .eq("id", contactId);
+
   try {
     const res = await fetch(`${n8nBase}/webhook/capobianco/avvia-conversazione`, {
       method: "POST",
@@ -40,7 +45,10 @@ export async function POST(
         conversation_session_id: conversationSessionId,
       }),
     });
-    if (!res.ok) throw new Error(`n8n status ${res.status}`);
+    if (!res.ok) {
+      await supabase.from("contacts").update({ n8n_session_id: null }).eq("id", contactId);
+      throw new Error(`n8n status ${res.status}`);
+    }
   } catch (err) {
     console.error("Errore chiamata n8n start-whatsapp:", err);
     return NextResponse.json({ error: "Impossibile avviare la conversazione WhatsApp" }, { status: 502 });

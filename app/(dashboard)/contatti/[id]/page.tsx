@@ -12,12 +12,13 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   const session = await getSession();
   const contactId = Number(params.id);
 
-  const { data: raw } = await supabase
+  const { data: raw, error } = await supabase
     .from("contacts")
     .select("*, creator:users!created_by_id(name)")
     .eq("id", contactId)
     .maybeSingle();
 
+  if (error) console.error("[contatti/[id]] Supabase error:", error.message, error.code);
   if (!raw) notFound();
 
   const { creator, ...contactRest } = raw as Record<string, unknown>;

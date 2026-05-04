@@ -6,9 +6,10 @@ import { LogOut, User } from "lucide-react";
 type HeaderProps = {
   name: string;
   role: "admin" | "salesperson";
+  zona?: string | null;
 };
 
-export default function Header({ name, role }: HeaderProps) {
+export default function Header({ name, role, zona }: HeaderProps) {
   const router = useRouter();
 
   async function handleLogout() {
@@ -27,8 +28,8 @@ export default function Header({ name, role }: HeaderProps) {
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-text leading-tight">{name}</p>
-            <p className="text-xs text-text-muted capitalize">
-              {role === "admin" ? "Amministratore" : "Venditore"}
+            <p className="text-xs text-text-muted">
+              {role === "admin" ? "Amministratore" : `Venditore${zona ? ` · ${zona}` : ""}`}
             </p>
           </div>
         </div>

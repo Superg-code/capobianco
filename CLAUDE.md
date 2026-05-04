@@ -99,7 +99,9 @@ API routes that n8n calls accept `Authorization: Bearer <CRM_API_TOKEN>` via `li
 
 **WhatsApp conversation start**: `POST /api/contacts/[id]/start-whatsapp` is called by the CRM UI. It validates the contact has a phone and no active session, then POSTs to `{N8N_WEBHOOK_BASE_URL}/webhook/capobianco/avvia-conversazione` with contact data including a generated `conversation_session_id`.
 
-**Session-based routing for WhatsApp agents**: workflow `01b AI Turn Handler` uses a WAIT node with `resume: "webhook"`. Before suspending, `HTTP_Save_Session` PATCHes `contacts.n8n_session_id = $execution.resumeUrl` via Supabase REST. The trigger has `responseMode: "responseNode"` and a `RESPOND_Ack` node fires before the WAIT — this means the caller gets an immediate `{"started": true}` response while 01b continues in background. When a customer reply arrives, `00 WhatsApp Ingresso` checks `n8n_session_id` — if set, POSTs to the resumeUrl (resuming 01b); if empty, triggers 01b fresh. After WAIT resumes, `HTTP_Clear_Session` sets `n8n_session_id` to null.
+**WhatsApp inbound routing**: `00 WhatsApp Ingresso` receives every inbound WhatsApp message. It extracts `phone` (full E.164 without `+`, e.g. `393883856494`) and `localPhone` (without `39` prefix). It queries Supabase `contacts` with `or=(wa_contact_id.eq.{phone},phone.ilike.*{localPhone})`. If a contact is found, it updates `ultima_interazione` and triggers `01b AI Turn Handler`. If no contact is found, it creates a new one and sets `wa_contact_id`. **Phone format**: `wa_contact_id` must be stored as the full international number without `+` (e.g. `393883856494`). Workflow `01 Avvio Conversazione` sets `wa_contact_id` on the contact immediately after sending the greeting — this is what enables `00 WhatsApp Ingresso` to match the contact when the customer replies.
+
+**01b AI Turn Handler**: runs synchronously (no WAIT node). Loads interaction history from `interactions` table, calls GPT-4o, sends WA reply, then optionally creates an appointment. The `RESPOND_Ack` node fires immediately with `{"started": true}` (responseMode: responseNode) so the caller is not blocked.
 
 `notification_queue` table stores outbound emails queued by `/api/notifications/email`. No SMTP sender is wired up by default.
 
@@ -122,7 +124,20 @@ API routes that n8n calls accept `Authorization: Bearer <CRM_API_TOKEN>` via `li
 | Workflow | ID |
 |---|---|
 | `00 WhatsApp Ingresso` (inbound webhook, contact lookup, triggers 01b) | `0Y24BgIZQwpJE3br` |
+| `00 WhatsApp Verify` (Meta webhook verification) | `kwmlvDjM7MayoD9E` |
+| `00 WhatsApp Invio Template` (outbound template sender) | `a5aEt1j7n19EHVc8` |
+| `01 Avvio Conversazione da CRM` (CRM UI → greeting → set wa_contact_id → trigger 01b) | `qvRwSaPpXCwDMSqv` |
 | `01b AI Turn Handler` (history load, GPT-4o, WA reply, appointment booking) | `q0xmpvyu7PLEIDiS` |
+
+### Workflow 01 Avvio Conversazione node sequence (6 nodes)
+
+```
+TRIGGER_CRM_Avvio → HTTP_WA_Greeting (template) → HTTP_Save_Greeting
+  → HTTP_Set_WA_Contact_ID (PATCH contacts: wa_contact_id = normalizedPhone)
+  → HTTP_Trigger_AI_Turn → SET_Response_OK
+```
+
+`HTTP_Set_WA_Contact_ID` normalizes the phone from the CRM format (`+39 388 385 6494`) to E.164 without `+` (`393883856494`) and writes it to `contacts.wa_contact_id`. This is required so that `00 WhatsApp Ingresso` can match the contact when the customer replies.
 
 ### Workflow 01b node sequence (17 nodes)
 
@@ -139,11 +154,11 @@ TRIGGER_AI_Turn → RESPOND_Ack → HTTP_Save_Inbound → HTTP_Load_History
 ```
 
 Key implementation notes:
-- `CODE_Build_AI_Prompt` runs `runOnceForAllItems`, uses `$input.all()` to collect full interaction history. Injects today's date so GPT-4o can resolve relative days ("venerdì prossimo") to exact ISO dates.
+- `CODE_Build_AI_Prompt` runs `runOnceForAllItems`, uses `$input.all()` to collect full interaction history. Injects today's date so GPT-4o can resolve relative days ("venerdì prossimo") to exact ISO dates. System prompt includes a REGOLE FONDAMENTALI section (no inventing specs/prices) and a split CATALOGO with separate sections for new machines (linking to official NH/JCB portals) and used machines (Agriaffaires link).
 - AI response format: natural text first, then `---METADATA---` separator, then JSON metadata. `CODE_Parse_Response` splits on the separator. **Do not re-add `response_format: {type: "json_object"}` to the OpenAI call** — it breaks natural language output.
-- `IF_Appointment_Requested` condition: `String($json.appointment_requested) == "true"` (string equality). **Do not use `boolean.true` / `singleValue` operator** — it silently evaluates false when the value comes from a Code node.
+- `IF_Appointment_Requested` condition: `String($('CODE_Set_Direct_Reply').item.json.appointment_requested) == "true"` (string equality, reads from `CODE_Set_Direct_Reply` explicitly). **Do not use `$json.appointment_requested`** — after `HTTP_Save_Outbound` the Supabase response is empty. **Do not use `boolean.true` / `singleValue` operator** — it silently evaluates false when the value comes from a Code node.
 - Appointment zone routing: `HTTP_Get_Salesperson_By_Zone` queries `users?zona=ilike.*{appointment_zone}*`, `CODE_Pick_Salesperson` takes the first match. Falls back to `trigger.salesperson_id` if no zone match found.
-- `HTTP_Save_Summary` and `HTTP_Create_Appointment` reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*` — because after `HTTP_Save_Outbound` (Supabase 204), `$json` is empty.
+- `HTTP_Save_Outbound`, `HTTP_Save_Summary`, and `HTTP_Create_Appointment` all reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*` — because after `HTTP_Save_Outbound` (Supabase 204), `$json` is empty.
 - Workflow 00 fetches `created_by_id` from contacts and passes it as `salesperson_id` to 01b.
 
 ## Miscellaneous

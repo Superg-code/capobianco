@@ -23,6 +23,7 @@ export default function UsersManager({ users: initialUsers, currentUserId }: Pro
   const [showAdd, setShowAdd] = useState(false);
   const [activationLink, setActivationLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedRowId, setCopiedRowId] = useState<number | null>(null);
   const [form, setForm] = useState({ first_name: "", last_name: "", zona: "", email: "", role: "salesperson" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -66,6 +67,14 @@ export default function UsersManager({ users: initialUsers, currentUserId }: Pro
     navigator.clipboard.writeText(activationLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function copyRowLink(user: UserRow) {
+    if (!user.activation_token) return;
+    const link = `${window.location.origin}/attiva-account?token=${user.activation_token}`;
+    navigator.clipboard.writeText(link);
+    setCopiedRowId(user.id);
+    setTimeout(() => setCopiedRowId(null), 2000);
   }
 
   const inputClass =
@@ -156,15 +165,27 @@ export default function UsersManager({ users: initialUsers, currentUserId }: Pro
                   </span>
                 </td>
                 <td className="px-5 py-3.5">
-                  {user.id !== currentUserId && (
-                    <button
-                      onClick={() => handleDelete(user.id, user.name)}
-                      className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Elimina"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1 justify-end">
+                    {user.activation_token && (
+                      <button
+                        onClick={() => copyRowLink(user)}
+                        className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+                        title="Copia link di attivazione"
+                      >
+                        {copiedRowId === user.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedRowId === user.id ? "Copiato" : "Link"}
+                      </button>
+                    )}
+                    {user.id !== currentUserId && (
+                      <button
+                        onClick={() => handleDelete(user.id, user.name)}
+                        className="p-1.5 text-text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Elimina"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -31,7 +31,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     .from("appointments")
     .update(updates)
     .eq("id", id)
-    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name)")
+    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name,zona)")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -1,11 +1,15 @@
 import { supabase } from "@/lib/supabase";
+import { getSession } from "@/lib/auth";
 import Link from "next/link";
 import { Plus, Upload } from "lucide-react";
 import ContactsTable from "./ContactsTable";
+import BulkWhatsAppButton from "./BulkWhatsAppButton";
 
 type SearchParams = { q?: string; page?: string };
 
 export default async function ContattiPage({ searchParams }: { searchParams: SearchParams }) {
+  const session = await getSession();
+  const isAdmin = session?.role === "admin";
   const q = searchParams.q ?? "";
   const page = Math.max(1, Number(searchParams.page ?? "1"));
   const limit = 20;
@@ -40,7 +44,8 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
           <h1 className="text-2xl font-heading font-bold text-text">Contatti</h1>
           <p className="text-text-muted text-sm mt-0.5">{total} contatti totali</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-end">
+          {isAdmin && <BulkWhatsAppButton />}
           <Link
             href="/contatti/importa"
             className="flex items-center gap-2 border border-gray-200 hover:bg-gray-50 text-text font-semibold text-sm px-4 py-2 rounded-lg transition-colors"

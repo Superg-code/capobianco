@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, Clock, User, Building2, Trash2, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Clock, User, Building2, Trash2, Check, Phone, MessageSquare } from "lucide-react";
 
 type Contact = { id: number; first_name: string; last_name: string; company: string | null };
 type Salesperson = { id: number; name: string };
@@ -14,12 +14,13 @@ type Appointment = {
   duration_minutes: number;
   notes: string | null;
   status: "scheduled" | "completed" | "cancelled";
-  contact: { first_name: string; last_name: string; company: string | null } | null;
-  salesperson: { name: string } | null;
+  contact: { first_name: string; last_name: string; company: string | null; phone: string | null; conversation_summary: string | null } | null;
+  salesperson: { name: string; zona: string | null } | null;
 };
 
 type Props = {
   initialAppointments: Appointment[];
+  initialAllAppointments: Appointment[];
   contacts: Contact[];
   salespeople: Salesperson[];
   currentUserId: number;
@@ -66,12 +67,26 @@ function toLocalTimeStr(iso: string) {
   return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function CalendarioClient({ initialAppointments, contacts, salespeople, currentUserId, isAdmin, initialMonth }: Props) {
+function apptMonth(iso: string) {
+  return iso.slice(0, 7); // "YYYY-MM"
+}
+
+export default function CalendarioClient({
+  initialAppointments,
+  initialAllAppointments,
+  contacts,
+  salespeople,
+  currentUserId,
+  isAdmin,
+  initialMonth,
+}: Props) {
   const [month, setMonth] = useState(initialMonth);
-  const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
+  // Grid state: only current month, replaced on navigation
+  const [calendarAppts, setCalendarAppts] = useState<Appointment[]>(initialAppointments);
+  // List state: all appointments, never reset by month navigation
+  const [allAppts, setAllAppts] = useState<Appointment[]>(initialAllAppointments);
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [prefillDate, setPrefillDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     contact_id: "",
@@ -88,7 +103,7 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
   const firstDay = getFirstDayOfWeek(month);
 
   const apptByDay: Record<number, Appointment[]> = {};
-  for (const a of appointments) {
+  for (const a of calendarAppts) {
     const d = new Date(a.scheduled_at).getDate();
     if (!apptByDay[d]) apptByDay[d] = [];
     apptByDay[d].push(a);
@@ -99,12 +114,11 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
     setMonth(newMonth);
     const res = await fetch(`/api/appointments?month=${newMonth}`);
     const data = await res.json();
-    setAppointments(data.appointments ?? []);
+    setCalendarAppts(data.appointments ?? []);
   }, [month]);
 
   function openCreate(day?: number) {
     const dateStr = day ? `${year}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
-    setPrefillDate(dateStr);
     setForm(f => ({ ...f, date: dateStr, time: "09:00", title: "", notes: "", contact_id: "", duration_minutes: "60" }));
     setSelected(null);
     setShowForm(true);
@@ -130,12 +144,25 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
       const data = await res.json();
       if (!res.ok) { alert(data.error ?? "Errore"); return; }
 
-      const saved = data.appointment;
+      const saved: Appointment = data.appointment;
+      const savedMonth = apptMonth(saved.scheduled_at);
+
       if (selected) {
-        setAppointments(prev => prev.map(a => a.id === selected.id ? saved : a));
+        // Update or remove from calendar grid (might have changed month)
+        if (savedMonth === month) {
+          setCalendarAppts(prev => prev.map(a => a.id === selected.id ? saved : a));
+        } else {
+          setCalendarAppts(prev => prev.filter(a => a.id !== selected.id));
+        }
+        setAllAppts(prev => prev.map(a => a.id === selected.id ? saved : a));
       } else {
-        setAppointments(prev => [...prev, saved].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
+        // New appointment: add to grid only if it's in the current month
+        if (savedMonth === month) {
+          setCalendarAppts(prev => [...prev, saved].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
+        }
+        setAllAppts(prev => [...prev, saved].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
       }
+
       setShowForm(false);
       setSelected(null);
     } finally {
@@ -151,8 +178,10 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
     });
     const data = await res.json();
     if (res.ok) {
-      setAppointments(prev => prev.map(a => a.id === appt.id ? data.appointment : a));
-      setSelected(data.appointment);
+      const updated: Appointment = data.appointment;
+      setCalendarAppts(prev => prev.map(a => a.id === appt.id ? updated : a));
+      setAllAppts(prev => prev.map(a => a.id === appt.id ? updated : a));
+      setSelected(updated);
     }
   }
 
@@ -160,7 +189,8 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
     if (!confirm(`Eliminare l'appuntamento con ${appt.contact?.first_name} ${appt.contact?.last_name}?`)) return;
     const res = await fetch(`/api/appointments/${appt.id}`, { method: "DELETE" });
     if (res.ok) {
-      setAppointments(prev => prev.filter(a => a.id !== appt.id));
+      setCalendarAppts(prev => prev.filter(a => a.id !== appt.id));
+      setAllAppts(prev => prev.filter(a => a.id !== appt.id));
       setSelected(null);
     }
   }
@@ -304,15 +334,32 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
                   <span>{selected.contact.company}</span>
                 </div>
               )}
+              {selected.contact?.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 flex-shrink-0" />
+                  <a href={`tel:${selected.contact.phone}`} className="hover:text-text underline-offset-2 hover:underline">
+                    {selected.contact.phone}
+                  </a>
+                </div>
+              )}
               {selected.salesperson && (
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 flex-shrink-0 text-brand-dark" />
-                  <span>Venditore: {selected.salesperson.name}</span>
+                  <span>Venditore: {selected.salesperson.name}{selected.salesperson.zona ? ` · ${selected.salesperson.zona}` : ""}</span>
                 </div>
               )}
               {selected.notes && (
                 <div className="bg-gray-50 rounded-lg p-3 mt-2">
                   <p className="text-text text-sm">{selected.notes}</p>
+                </div>
+              )}
+              {selected.contact?.conversation_summary && (
+                <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 mt-1">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <MessageSquare className="w-3.5 h-3.5 text-amber-600" />
+                    <p className="text-xs font-semibold text-amber-700">Riassunto conversazione WhatsApp</p>
+                  </div>
+                  <p className="text-sm text-text">{selected.contact.conversation_summary}</p>
                 </div>
               )}
             </div>
@@ -351,16 +398,16 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
         </div>
       )}
 
-      {/* Appointment list */}
-      {appointments.length > 0 && (
+      {/* Persistent appointment list — always visible, never reset by month navigation */}
+      {allAppts.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="font-heading font-semibold text-text text-base">
-              Appuntamenti — {MONTHS_IT[mo - 1]} {year}
+              Tutti gli appuntamenti
             </h2>
           </div>
           <div className="divide-y divide-gray-50">
-            {[...appointments]
+            {[...allAppts]
               .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
               .map(a => (
                 <div
@@ -375,16 +422,22 @@ export default function CalendarioClient({ initialAppointments, contacts, salesp
                     <div className="text-lg font-bold text-text leading-none">
                       {new Date(a.scheduled_at).getDate()}
                     </div>
+                    <div className="text-xs text-text-muted">
+                      {new Date(a.scheduled_at).toLocaleDateString("it-IT", { month: "short" })}
+                    </div>
                   </div>
                   <div className="w-px h-10 bg-gray-100 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-text truncate">
-                      {a.title || `${a.contact?.first_name} ${a.contact?.last_name}`}
+                      {a.contact?.first_name} {a.contact?.last_name}
+                      {a.contact?.company ? <span className="font-normal text-text-muted"> · {a.contact.company}</span> : null}
+                      {a.contact?.phone ? <span className="font-normal text-text-muted"> · {a.contact.phone}</span> : null}
                     </p>
                     <p className="text-xs text-text-muted truncate">
                       {toLocalTimeStr(a.scheduled_at)} · {a.duration_minutes} min
-                      {a.contact?.company ? ` · ${a.contact.company}` : ""}
-                      {a.salesperson ? ` · ${a.salesperson.name}` : ""}
+                      {a.title ? ` · ${a.title}` : ""}
+                      {isAdmin && a.salesperson?.zona ? ` · ${a.salesperson.zona}` : ""}
+                      {isAdmin && a.salesperson ? ` · ${a.salesperson.name}` : ""}
                     </p>
                   </div>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[a.status]}`}>

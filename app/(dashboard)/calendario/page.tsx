@@ -15,33 +15,43 @@ export default async function CalendarioPage() {
     : `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, "0")}`;
   const to = `${nextM}-01T00:00:00Z`;
 
-  let query = supabase
+  const select = "*, contact:contacts(first_name,last_name,company,phone,conversation_summary), salesperson:users!salesperson_id(name,zona)";
+
+  // Calendar grid: current month only
+  let gridQuery = supabase
     .from("appointments")
-    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name)")
+    .select(select)
     .gte("scheduled_at", from)
     .lt("scheduled_at", to)
     .order("scheduled_at");
 
+  // Persistent list: all appointments
+  let listQuery = supabase
+    .from("appointments")
+    .select(select)
+    .order("scheduled_at");
+
   if (session.role !== "admin") {
-    query = query.eq("salesperson_id", Number(session.sub));
+    gridQuery = gridQuery.eq("salesperson_id", Number(session.sub));
+    listQuery = listQuery.eq("salesperson_id", Number(session.sub));
   }
 
-  const { data: appointments } = await query;
-
-  const { data: contacts } = await supabase
-    .from("contacts")
-    .select("id, first_name, last_name, company")
-    .order("last_name");
-
-  const { data: salespeople } = session.role === "admin"
-    ? await supabase.from("users").select("id, name").in("role", ["admin", "salesperson"]).order("name")
-    : { data: null };
+  const [{ data: appointments }, { data: allAppointments }, { data: contacts }, salesResult] =
+    await Promise.all([
+      gridQuery,
+      listQuery,
+      supabase.from("contacts").select("id, first_name, last_name, company").order("last_name"),
+      session.role === "admin"
+        ? supabase.from("users").select("id, name").in("role", ["admin", "salesperson"]).order("name")
+        : Promise.resolve({ data: null }),
+    ]);
 
   return (
     <CalendarioClient
       initialAppointments={appointments ?? []}
+      initialAllAppointments={allAppointments ?? []}
       contacts={contacts ?? []}
-      salespeople={salespeople ?? []}
+      salespeople={salesResult.data ?? []}
       currentUserId={Number(session.sub)}
       isAdmin={session.role === "admin"}
       initialMonth={month}

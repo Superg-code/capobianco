@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("appointments")
-    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name)")
+    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name,zona)")
     .order("scheduled_at", { ascending: true });
 
   if (session.role !== "admin") {
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       notes: notes?.trim() || null,
       status: "scheduled",
     })
-    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name)")
+    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name,zona)")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
