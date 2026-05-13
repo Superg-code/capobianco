@@ -121,7 +121,7 @@ export default function ImportaPage() {
                     Scegli file
                     <input
                       type="file"
-                      accept=".xlsx,.xls,.csv"
+                      accept=".xlsx,.xls"
                       onChange={handleInputChange}
                       className="hidden"
                     />
