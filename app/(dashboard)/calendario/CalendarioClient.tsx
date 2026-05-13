@@ -466,9 +466,18 @@ export default function CalendarioClient({
                     <p className="text-xs text-text-muted truncate">
                       {toLocalTimeStr(a.scheduled_at)} · {a.duration_minutes} min
                       {a.title ? ` · ${a.title}` : ""}
-                      {isAdmin && a.salesperson?.zona ? ` · ${a.salesperson.zona}` : ""}
-                      {isAdmin && a.salesperson ? ` · ${a.salesperson.name}` : ""}
                     </p>
+                    {isAdmin && a.salesperson && (
+                      <p className="text-xs mt-0.5 flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 bg-brand/10 text-brand-dark font-semibold px-2 py-0.5 rounded-full">
+                          <User className="w-3 h-3" />
+                          {a.salesperson.name}
+                        </span>
+                        {a.salesperson.zona && (
+                          <span className="text-text-muted">{a.salesperson.zona}</span>
+                        )}
+                      </p>
+                    )}
                   </div>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[a.status]}`}>
                     {a.status === "scheduled" ? "Programmato" : a.status === "completed" ? "Completato" : "Annullato"}
