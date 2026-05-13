@@ -81,6 +81,7 @@ export default function CalendarioClient({
   initialMonth,
 }: Props) {
   const [month, setMonth] = useState(initialMonth);
+  const [filterSalespersonId, setFilterSalespersonId] = useState<string>("");
   // Grid state: only current month, replaced on navigation
   const [calendarAppts, setCalendarAppts] = useState<Appointment[]>(initialAppointments);
   // List state: all appointments, never reset by month navigation
@@ -112,10 +113,25 @@ export default function CalendarioClient({
   const changeMonth = useCallback(async (delta: number) => {
     const newMonth = shiftMonth(month, delta);
     setMonth(newMonth);
-    const res = await fetch(`/api/appointments?month=${newMonth}`);
+    const params = new URLSearchParams({ month: newMonth });
+    if (isAdmin && filterSalespersonId) params.set("salesperson_id", filterSalespersonId);
+    const res = await fetch(`/api/appointments?${params}`);
     const data = await res.json();
     setCalendarAppts(data.appointments ?? []);
-  }, [month]);
+  }, [month, isAdmin, filterSalespersonId]);
+
+  async function handleFilterChange(spId: string) {
+    setFilterSalespersonId(spId);
+    const params = new URLSearchParams({ month });
+    if (spId) params.set("salesperson_id", spId);
+    const [gridRes, listRes] = await Promise.all([
+      fetch(`/api/appointments?${params}`),
+      fetch(`/api/appointments${spId ? `?salesperson_id=${spId}` : ""}`),
+    ]);
+    const [gridData, listData] = await Promise.all([gridRes.json(), listRes.json()]);
+    setCalendarAppts(gridData.appointments ?? []);
+    setAllAppts(listData.appointments ?? []);
+  }
 
   function openCreate(day?: number) {
     const dateStr = day ? `${year}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
@@ -221,18 +237,32 @@ export default function CalendarioClient({
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-heading font-bold text-text">Calendario</h1>
           <p className="text-text-muted text-sm mt-0.5">Appuntamenti e disponibilità</p>
         </div>
-        <button
-          onClick={() => openCreate()}
-          className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-text font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nuovo appuntamento
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {isAdmin && salespeople.length > 0 && (
+            <select
+              value={filterSalespersonId}
+              onChange={e => handleFilterChange(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand bg-white"
+            >
+              <option value="">Tutte le zone</option>
+              {salespeople.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => openCreate()}
+            className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-text font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nuovo appuntamento
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">

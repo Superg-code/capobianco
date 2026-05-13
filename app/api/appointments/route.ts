@@ -16,7 +16,22 @@ export async function GET(req: Request) {
     .order("scheduled_at", { ascending: true });
 
   if (session.role !== "admin") {
-    query = query.eq("salesperson_id", Number(session.sub));
+    const myId = Number(session.sub);
+    const { data: userData } = await supabase
+      .from("users").select("zona").eq("id", myId).single();
+    const zona = userData?.zona?.trim();
+    if (zona) {
+      const { data: zoneContacts } = await supabase
+        .from("contacts").select("id").ilike("city", `%${zona}%`);
+      const cids = (zoneContacts ?? []).map((c: { id: number }) => c.id);
+      if (cids.length > 0) {
+        query = query.or(`salesperson_id.eq.${myId},contact_id.in.(${cids.join(",")})`);
+      } else {
+        query = query.eq("salesperson_id", myId);
+      }
+    } else {
+      query = query.eq("salesperson_id", myId);
+    }
   } else if (salespersonId) {
     query = query.eq("salesperson_id", Number(salespersonId));
   }

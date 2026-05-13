@@ -32,8 +32,26 @@ export default async function CalendarioPage() {
     .order("scheduled_at");
 
   if (session.role !== "admin") {
-    gridQuery = gridQuery.eq("salesperson_id", Number(session.sub));
-    listQuery = listQuery.eq("salesperson_id", Number(session.sub));
+    const myId = Number(session.sub);
+    const { data: userData } = await supabase
+      .from("users").select("zona").eq("id", myId).single();
+    const zona = userData?.zona?.trim();
+    if (zona) {
+      const { data: zoneContacts } = await supabase
+        .from("contacts").select("id").ilike("city", `%${zona}%`);
+      const cids = (zoneContacts ?? []).map((c: { id: number }) => c.id);
+      if (cids.length > 0) {
+        const orFilter = `salesperson_id.eq.${myId},contact_id.in.(${cids.join(",")})`;
+        gridQuery = gridQuery.or(orFilter);
+        listQuery = listQuery.or(orFilter);
+      } else {
+        gridQuery = gridQuery.eq("salesperson_id", myId);
+        listQuery = listQuery.eq("salesperson_id", myId);
+      }
+    } else {
+      gridQuery = gridQuery.eq("salesperson_id", myId);
+      listQuery = listQuery.eq("salesperson_id", myId);
+    }
   }
 
   const [{ data: appointments }, { data: allAppointments }, { data: contacts }, salesResult] =
