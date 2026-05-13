@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("appointments")
-    .select("*, contact:contacts(first_name,last_name,company), salesperson:users!salesperson_id(name,zona)")
+    .select("*, contact:contacts(first_name,last_name,company,city), salesperson:users!salesperson_id(name,zona)")
     .order("scheduled_at", { ascending: true });
 
   if (session.role !== "admin") {

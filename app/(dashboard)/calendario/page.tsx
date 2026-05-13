@@ -15,7 +15,7 @@ export default async function CalendarioPage() {
     : `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, "0")}`;
   const to = `${nextM}-01T00:00:00Z`;
 
-  const select = "*, contact:contacts(first_name,last_name,company,phone,conversation_summary), salesperson:users!salesperson_id(name,zona)";
+  const select = "*, contact:contacts(first_name,last_name,company,phone,conversation_summary,city), salesperson:users!salesperson_id(name,zona)";
 
   // Calendar grid: current month only
   let gridQuery = supabase
@@ -60,7 +60,7 @@ export default async function CalendarioPage() {
       listQuery,
       supabase.from("contacts").select("id, first_name, last_name, company").order("last_name"),
       session.role === "admin"
-        ? supabase.from("users").select("id, name").in("role", ["admin", "salesperson"]).order("name")
+        ? supabase.from("users").select("id, name, zona").in("role", ["salesperson"]).order("name")
         : Promise.resolve({ data: null }),
     ]);
 

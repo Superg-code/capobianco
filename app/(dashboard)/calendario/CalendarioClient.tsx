@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Clock, User, Building2, Trash2, Check, Phone, MessageSquare } from "lucide-react";
 
 type Contact = { id: number; first_name: string; last_name: string; company: string | null };
-type Salesperson = { id: number; name: string };
+type Salesperson = { id: number; name: string; zona: string | null };
 type Appointment = {
   id: number;
   contact_id: number;
@@ -14,7 +14,7 @@ type Appointment = {
   duration_minutes: number;
   notes: string | null;
   status: "scheduled" | "completed" | "cancelled";
-  contact: { first_name: string; last_name: string; company: string | null; phone: string | null; conversation_summary: string | null } | null;
+  contact: { first_name: string; last_name: string; company: string | null; phone: string | null; conversation_summary: string | null; city: string | null } | null;
   salesperson: { name: string; zona: string | null } | null;
 };
 
@@ -467,17 +467,23 @@ export default function CalendarioClient({
                       {toLocalTimeStr(a.scheduled_at)} · {a.duration_minutes} min
                       {a.title ? ` · ${a.title}` : ""}
                     </p>
-                    {isAdmin && a.salesperson && (
-                      <p className="text-xs mt-0.5 flex items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 bg-brand/10 text-brand-dark font-semibold px-2 py-0.5 rounded-full">
-                          <User className="w-3 h-3" />
-                          {a.salesperson.name}
-                        </span>
-                        {a.salesperson.zona && (
-                          <span className="text-text-muted">{a.salesperson.zona}</span>
-                        )}
-                      </p>
-                    )}
+                    {isAdmin && (() => {
+                      const city = a.contact?.city ?? "";
+                      const zoneSp = city
+                        ? salespeople.find(s => s.zona && city.toLowerCase().includes(s.zona.toLowerCase()))
+                        : null;
+                      const sp = zoneSp ?? (a.salesperson && a.salesperson.name !== "Amministratore" ? { name: a.salesperson.name, zona: a.salesperson.zona } : null);
+                      if (!sp) return null;
+                      return (
+                        <p className="text-xs mt-0.5 flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 bg-brand/10 text-brand-dark font-semibold px-2 py-0.5 rounded-full">
+                            <User className="w-3 h-3" />
+                            {sp.name}
+                          </span>
+                          {sp.zona && <span className="text-text-muted">{sp.zona}</span>}
+                        </p>
+                      );
+                    })()}
                   </div>
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLOR[a.status]}`}>
                     {a.status === "scheduled" ? "Programmato" : a.status === "completed" ? "Completato" : "Annullato"}
