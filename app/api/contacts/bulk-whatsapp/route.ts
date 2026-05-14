@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { getSession } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-// Returns contacts eligible for WhatsApp (have phone, no active session)
+// Returns all contacts with a phone number (regardless of active session)
 export async function GET() {
   const session = await getSession();
   if (!session || session.role !== "admin") {
@@ -13,7 +13,6 @@ export async function GET() {
     .from("contacts")
     .select("id, first_name, last_name, phone")
     .not("phone", "is", null)
-    .is("n8n_session_id", null)
     .order("updated_at", { ascending: false });
 
   return NextResponse.json({ contacts: data ?? [] });

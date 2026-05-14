@@ -91,8 +91,8 @@ export default function BulkWhatsAppButton() {
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-1">
                   <p className="text-sm font-semibold text-amber-800">Attenzione</p>
                   <p className="text-sm text-amber-700">
-                    Questa azione avvierà una conversazione WhatsApp per tutti i contatti con numero di telefono
-                    che non hanno già una conversazione attiva. L'operazione non è reversibile.
+                    Questa azione avvierà una nuova conversazione WhatsApp per tutti i contatti con numero di telefono,
+                    inclusi quelli con conversazione già in corso. L'operazione non è reversibile.
                   </p>
                 </div>
                 <div>
@@ -166,7 +166,7 @@ export default function BulkWhatsAppButton() {
                     )}
                     {contacts.length === 0 && (
                       <p className="text-xs text-text-muted">
-                        Tutti i contatti con telefono hanno già una conversazione attiva.
+                        Nessun contatto con numero di telefono trovato.
                       </p>
                     )}
                   </div>

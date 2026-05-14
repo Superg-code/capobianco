@@ -30,6 +30,23 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
     .eq("contact_id", contactId)
     .order("updated_at", { ascending: false });
 
+  const [{ data: summariesRaw }, { data: sessionsRaw }] = await Promise.all([
+    supabase
+      .from("interactions")
+      .select("id, contenuto, session_id, timestamp")
+      .eq("contact_id", contactId)
+      .eq("tipo", "conversation_summary")
+      .order("timestamp", { ascending: false }),
+    supabase
+      .from("interactions")
+      .select("session_id")
+      .eq("contact_id", contactId)
+      .not("session_id", "is", null),
+  ]);
+
+  const conversationSummaries = (summariesRaw ?? []) as { id: number; contenuto: string; session_id: string; timestamp: string }[];
+  const conversationCount = new Set((sessionsRaw ?? []).map((r: { session_id: string | null }) => r.session_id).filter(Boolean)).size;
+
   const sales: SaleWithDetails[] = (salesRaw ?? []).map((s) => {
     const { salesperson, ...rest } = s as Record<string, unknown>;
     return { ...rest, salesperson_name: (salesperson as Record<string, unknown> | null)?.name ?? "" } as SaleWithDetails;
@@ -59,7 +76,12 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-1 space-y-4">
-          <ContactDetailClient contact={contact} isAdmin={session?.role === "admin"} />
+          <ContactDetailClient
+            contact={contact}
+            isAdmin={session?.role === "admin"}
+            conversationSummaries={conversationSummaries}
+            conversationCount={conversationCount}
+          />
         </div>
 
         <div className="lg:col-span-2 space-y-4">

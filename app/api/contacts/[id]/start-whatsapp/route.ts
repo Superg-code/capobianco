@@ -13,13 +13,12 @@ export async function POST(
 
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, first_name, last_name, phone, email, company, city, notes, n8n_session_id")
+    .select("id, first_name, last_name, phone, email, company, city, notes, n8n_session_id, created_by_id")
     .eq("id", contactId)
     .maybeSingle();
 
   if (!contact) return NextResponse.json({ error: "Contatto non trovato" }, { status: 404 });
   if (!contact.phone) return NextResponse.json({ error: "Il contatto non ha un numero di telefono" }, { status: 400 });
-  if (contact.n8n_session_id) return NextResponse.json({ error: "Conversazione già attiva per questo contatto" }, { status: 409 });
 
   const conversationSessionId = `conv_${contactId}_${Date.now()}`;
   const n8nBase = process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.srv1533428.hstgr.cloud";
@@ -43,6 +42,8 @@ export async function POST(
         city: contact.city,
         notes: contact.notes,
         conversation_session_id: conversationSessionId,
+        salesperson_id: Number(session.sub),
+        created_by_id: contact.created_by_id,
       }),
     });
     if (!res.ok) {

@@ -3,21 +3,26 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ContactForm from "@/components/contacts/ContactForm";
-import { Mail, Phone, Building2, MapPin, Edit, Trash2, Calendar, MessageCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Mail, Phone, Building2, MapPin, Edit, Trash2, Calendar, MessageCircle, Loader2, CheckCircle2, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import type { Contact } from "@/lib/db";
+
+type ConversationSummary = { id: number; contenuto: string; session_id: string; timestamp: string };
 
 type Props = {
   contact: Contact & { created_by_name: string | null };
   isAdmin: boolean;
+  conversationSummaries: ConversationSummary[];
+  conversationCount: number;
 };
 
-export default function ContactDetailClient({ contact, isAdmin }: Props) {
+export default function ContactDetailClient({ contact, isAdmin, conversationSummaries, conversationCount }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [waLoading, setWaLoading] = useState(false);
   const [waStatus, setWaStatus] = useState<"idle" | "sent" | "error">("idle");
   const [waError, setWaError] = useState<string | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   async function handleDelete() {
     if (!confirm(`Eliminare ${contact.first_name} ${contact.last_name}? Questa azione è irreversibile.`)) return;
@@ -30,6 +35,7 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
   async function handleStartWhatsApp() {
     setWaLoading(true);
     setWaError(null);
+    setWaStatus("idle");
     try {
       const res = await fetch(`/api/contacts/${contact.id}/start-whatsapp`, { method: "POST" });
       const data = await res.json();
@@ -53,10 +59,7 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
       <div className="bg-white rounded-xl border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-heading font-bold text-text">Modifica contatto</h2>
-          <button
-            onClick={() => setEditing(false)}
-            className="text-xs text-text-muted hover:text-text"
-          >
+          <button onClick={() => setEditing(false)} className="text-xs text-text-muted hover:text-text">
             Annulla
           </button>
         </div>
@@ -64,16 +67,11 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
           initialData={contact}
           excludeId={contact.id}
           inline
-          onSuccess={() => {
-            setEditing(false);
-            router.refresh();
-          }}
+          onSuccess={() => { setEditing(false); router.refresh(); }}
         />
       </div>
     );
   }
-
-  const hasActiveSession = Boolean(contact.n8n_session_id);
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
@@ -84,20 +82,11 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
           </span>
         </div>
         <div className="flex gap-1">
-          <button
-            onClick={() => setEditing(true)}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-text-muted"
-            title="Modifica"
-          >
+          <button onClick={() => setEditing(true)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-text-muted" title="Modifica">
             <Edit className="w-4 h-4" />
           </button>
           {isAdmin && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="p-2 rounded-lg hover:bg-red-50 transition-colors text-text-muted hover:text-red-500"
-              title="Elimina"
-            >
+            <button onClick={handleDelete} disabled={deleting} className="p-2 rounded-lg hover:bg-red-50 transition-colors text-text-muted hover:text-red-500" title="Elimina">
               <Trash2 className="w-4 h-4" />
             </button>
           )}
@@ -147,15 +136,37 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
       {/* WhatsApp AI Conversation */}
       {contact.phone && (
         <div className="pt-3 border-t border-gray-100 space-y-2">
-          {hasActiveSession ? (
-            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          {/* Stats: conversation count + last contact */}
+          {(conversationCount > 0 || contact.ultima_interazione) && (
+            <div className="flex items-center gap-3 text-xs text-text-muted">
+              {conversationCount > 0 && (
+                <span className="flex items-center gap-1">
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  {conversationCount} {conversationCount === 1 ? "conversazione" : "conversazioni"}
+                </span>
+              )}
+              {contact.ultima_interazione && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {new Date(contact.ultima_interazione).toLocaleDateString("it-IT", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Active session badge */}
+          {contact.n8n_session_id && (
+            <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 rounded-lg px-3 py-1.5">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
               Conversazione WhatsApp attiva
             </div>
-          ) : waStatus === "sent" ? (
+          )}
+
+          {/* Button — always visible */}
+          {waStatus === "sent" ? (
             <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
               <CheckCircle2 className="w-4 h-4" />
-              Messaggio inviato via WhatsApp
+              Messaggio WhatsApp inviato
             </div>
           ) : (
             <button
@@ -163,12 +174,8 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
               disabled={waLoading}
               className="w-full flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebe5d] disabled:opacity-60 text-white text-sm font-semibold rounded-lg px-4 py-2.5 transition-colors"
             >
-              {waLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <MessageCircle className="w-4 h-4" />
-              )}
-              {waLoading ? "Avvio in corso…" : "Avvia conversazione WhatsApp"}
+              {waLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+              {waLoading ? "Avvio in corso…" : contact.n8n_session_id ? "Avvia nuova conversazione" : "Avvia conversazione WhatsApp"}
             </button>
           )}
           {waStatus === "error" && waError && (
@@ -177,8 +184,37 @@ export default function ContactDetailClient({ contact, isAdmin }: Props) {
         </div>
       )}
 
-      {/* Conversation summary from AI */}
-      {contact.conversation_summary && (
+      {/* Archivio conversazioni */}
+      {conversationSummaries.length > 0 && (
+        <div className="pt-3 border-t border-gray-100">
+          <button
+            onClick={() => setArchiveOpen(o => !o)}
+            className="w-full flex items-center justify-between text-xs font-semibold text-text-muted hover:text-text transition-colors"
+          >
+            <span className="flex items-center gap-1.5">
+              <MessageCircle className="w-3.5 h-3.5" />
+              Archivio conversazioni ({conversationSummaries.length})
+            </span>
+            {archiveOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+
+          {archiveOpen && (
+            <div className="mt-2 space-y-2">
+              {conversationSummaries.map(s => (
+                <div key={s.id} className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-1">
+                    {new Date(s.timestamp).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                  <p className="text-xs text-text leading-relaxed">{s.contenuto}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ultimo riassunto AI (conversazione corrente) */}
+      {contact.conversation_summary && conversationSummaries.length === 0 && (
         <div className="bg-amber-50 rounded-lg p-3">
           <p className="text-xs font-semibold text-amber-700 mb-1">Riassunto conversazione AI</p>
           <p className="text-sm text-text">{contact.conversation_summary}</p>
