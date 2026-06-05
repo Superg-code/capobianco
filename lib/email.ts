@@ -13,7 +13,7 @@ export async function sendEmail(opts: EmailOptions): Promise<{ sent: boolean; er
     return { sent: false, error: "RESEND_API_KEY non configurata" };
   }
 
-  const from = process.env.EMAIL_FROM ?? "Capobianco CRM <noreply@capobiancocrm.com>";
+  const from = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
 
   const resend = new Resend(apiKey);
   const { error } = await resend.emails.send({
