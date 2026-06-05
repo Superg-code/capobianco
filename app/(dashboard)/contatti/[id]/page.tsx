@@ -47,6 +47,28 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   const conversationSummaries = (summariesRaw ?? []) as { id: number; contenuto: string; session_id: string; timestamp: string }[];
   const conversationCount = new Set((sessionsRaw ?? []).map((r: { session_id: string | null }) => r.session_id).filter(Boolean)).size;
 
+  // Tag del contatto + tutti i tag disponibili + cartelle
+  const [{ data: ctData }, { data: allTagsData }, { data: foldersData }] = await Promise.all([
+    supabase
+      .from("contact_tags")
+      .select("tag:tags(id, name, color)")
+      .eq("contact_id", contactId),
+    supabase
+      .from("tags")
+      .select("id, name, color")
+      .order("name", { ascending: true }),
+    supabase
+      .from("contact_folders")
+      .select("id, name")
+      .order("name", { ascending: true }),
+  ]);
+
+  const contactTags = (ctData ?? []).map(
+    (r) => (r as unknown as { tag: { id: number; name: string; color: string } }).tag
+  );
+  const allTags = (allTagsData ?? []) as { id: number; name: string; color: string }[];
+  const folders = (foldersData ?? []) as { id: number; name: string }[];
+
   const sales: SaleWithDetails[] = (salesRaw ?? []).map((s) => {
     const { salesperson, ...rest } = s as Record<string, unknown>;
     return { ...rest, salesperson_name: (salesperson as Record<string, unknown> | null)?.name ?? "" } as SaleWithDetails;
@@ -81,6 +103,9 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
             isAdmin={session?.role === "admin"}
             conversationSummaries={conversationSummaries}
             conversationCount={conversationCount}
+            initialTags={contactTags}
+            allTags={allTags}
+            folders={folders}
           />
         </div>
 

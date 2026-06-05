@@ -59,6 +59,13 @@ export async function PATCH(
   if (body.city       !== undefined) uiFields.city       = body.city?.trim()       || null;
   if (body.notes      !== undefined) uiFields.notes      = body.notes?.trim()      || null;
 
+  // Spostamento cartella
+  if ("folder_id" in body) {
+    uiFields.folder_id = body.folder_id !== undefined && body.folder_id !== null
+      ? Number(body.folder_id)
+      : null;
+  }
+
   // Campi n8n aggiornabili
   const n8nAllowed = [
     "n8n_session_id", "pipeline_stage", "lead_score",

@@ -136,6 +136,52 @@ CREATE INDEX IF NOT EXISTS idx_appointments_scheduled   ON appointments(schedule
 -- ALTER TABLE users ADD COLUMN IF NOT EXISTS zona TEXT;
 -- ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_token TEXT;
 
+-- ============================================================
+-- MIGRATION v2: Cartelle contatti, Tag, RSA/NR
+-- Esegui nel SQL Editor di Supabase se le tabelle esistono già
+-- ============================================================
+
+-- CARTELLE CONTATTI
+CREATE TABLE IF NOT EXISTS contact_folders (
+  id            BIGSERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  created_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE contact_folders DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_contact_folders_created_by ON contact_folders(created_by_id);
+
+-- TAG
+CREATE TABLE IF NOT EXISTS tags (
+  id            BIGSERIAL PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  color         TEXT NOT NULL DEFAULT '#6b7280',
+  created_by_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE tags DISABLE ROW LEVEL SECURITY;
+
+-- CONTATTO ↔ TAG (many-to-many)
+CREATE TABLE IF NOT EXISTS contact_tags (
+  contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  tag_id     BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (contact_id, tag_id)
+);
+ALTER TABLE contact_tags DISABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_contact_tags_tag ON contact_tags(tag_id);
+
+-- CARTELLA ↔ TAG (many-to-many)
+CREATE TABLE IF NOT EXISTS folder_tags (
+  folder_id BIGINT NOT NULL REFERENCES contact_folders(id) ON DELETE CASCADE,
+  tag_id    BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (folder_id, tag_id)
+);
+ALTER TABLE folder_tags DISABLE ROW LEVEL SECURITY;
+
+-- Aggiunge folder_id ai contatti
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS folder_id BIGINT REFERENCES contact_folders(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_folder ON contacts(folder_id);
+
 -- INDEXES
 CREATE INDEX IF NOT EXISTS idx_contacts_email    ON contacts(email);
 CREATE INDEX IF NOT EXISTS idx_contacts_phone    ON contacts(phone);

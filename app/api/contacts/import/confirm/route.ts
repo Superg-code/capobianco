@@ -7,7 +7,7 @@ export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
-  const { rows }: { rows: ImportRowWithStatus[] } = await req.json();
+  const { rows, folder_id }: { rows: ImportRowWithStatus[]; folder_id?: number | null } = await req.json();
 
   if (!Array.isArray(rows)) return NextResponse.json({ error: "Dati non validi" }, { status: 400 });
 
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
     city:          row.city?.trim()       || null,
     notes:         row.notes?.trim()      || null,
     created_by_id: userId,
+    folder_id:     folder_id ?? null,
   }));
 
   const { error } = await supabase.from("contacts").insert(records);

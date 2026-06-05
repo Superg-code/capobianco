@@ -97,11 +97,15 @@ Statuses: `lead` → `prospect` → `trattativa` → `vinto` → `perso`.
 ### n8n Integration
 API routes that n8n calls accept `Authorization: Bearer <CRM_API_TOKEN>` via `lib/api-auth.ts`. The Bearer token grants synthetic admin access. Relevant endpoints: `/api/contacts`, `/api/contacts/[id]`, `/api/interactions`, `/api/products/search`, `/api/notifications/email`.
 
-**WhatsApp conversation start**: `POST /api/contacts/[id]/start-whatsapp` is called by the CRM UI. It validates the contact has a phone and no active session, then POSTs to `{N8N_WEBHOOK_BASE_URL}/webhook/capobianco/avvia-conversazione` with contact data including a generated `conversation_session_id`.
+**WhatsApp conversation start**: `POST /api/contacts/[id]/start-whatsapp` is called by the CRM UI. It always allows starting a new conversation (no 409 block for existing sessions — re-start is intentional). It POSTs to `{N8N_WEBHOOK_BASE_URL}/webhook/capobianco/avvia-conversazione` with contact data including a freshly generated `conversation_session_id` (`conv_{id}_{timestamp}`), and also sends `salesperson_id` and `created_by_id`. The `bulk-whatsapp` route returns all contacts with a phone number regardless of active session.
 
 **WhatsApp inbound routing**: `00 WhatsApp Ingresso` receives every inbound WhatsApp message. It extracts `phone` (full E.164 without `+`, e.g. `393883856494`) and `localPhone` (without `39` prefix). It queries Supabase `contacts` with `or=(wa_contact_id.eq.{phone},phone.ilike.*{localPhone})`. If a contact is found, it updates `ultima_interazione` and triggers `01b AI Turn Handler`. If no contact is found, it creates a new one and sets `wa_contact_id`. **Phone format**: `wa_contact_id` must be stored as the full international number without `+` (e.g. `393883856494`). Workflow `01 Avvio Conversazione` sets `wa_contact_id` on the contact immediately after sending the greeting — this is what enables `00 WhatsApp Ingresso` to match the contact when the customer replies.
 
-**01b AI Turn Handler**: runs synchronously (no WAIT node). Loads interaction history from `interactions` table, calls GPT-4o, sends WA reply, then optionally creates an appointment. The `RESPOND_Ack` node fires immediately with `{"started": true}` (responseMode: responseNode) so the caller is not blocked.
+**Critical — session_id continuity**: `HTTP_Trigger_Agent02` in `00 WhatsApp Ingresso` passes `conversation_session_id: $json.n8n_session_id || $json.contact_id`. This must use `n8n_session_id` (the value set by workflow 01) so that `HTTP_Load_History` in 01b can find the full conversation history. If this falls back to `contact_id`, each inbound reply appears as a new conversation and context is lost.
+
+**01b AI Turn Handler**: runs synchronously (no WAIT node). Loads interaction history from `interactions` table (scoped to the current `conversation_session_id`), calls GPT-4o, sends WA reply, then optionally creates/updates an appointment and archives a conversation summary. The `RESPOND_Ack` node fires immediately with `{"started": true}` (responseMode: responseNode) so the caller is not blocked.
+
+**Contact detail page** (`/contatti/[id]`): the Server Component fetches conversation summaries (`interactions` where `tipo='conversation_summary'`) and distinct session count, passing them as props to `ContactDetailClient`. The client shows: conversation count, last contact date (`ultima_interazione`), active-session badge (`n8n_session_id`), collapsible archive of past summaries, and always-visible WhatsApp start button (re-starting is allowed).
 
 `notification_queue` table stores outbound emails queued by `/api/notifications/email`. No SMTP sender is wired up by default.
 
@@ -139,27 +143,35 @@ TRIGGER_CRM_Avvio → HTTP_WA_Greeting (template) → HTTP_Save_Greeting
 
 `HTTP_Set_WA_Contact_ID` normalizes the phone from the CRM format (`+39 388 385 6494`) to E.164 without `+` (`393883856494`) and writes it to `contacts.wa_contact_id`. This is required so that `00 WhatsApp Ingresso` can match the contact when the customer replies.
 
-### Workflow 01b node sequence (17 nodes)
+### Workflow 01b node sequence (18 nodes)
 
 ```
 TRIGGER_AI_Turn → RESPOND_Ack → HTTP_Save_Inbound → HTTP_Load_History
-  → CODE_Build_AI_Prompt → HTTP_OpenAI_Analyze → CODE_Parse_Response
-  → CODE_Set_Direct_Reply → HTTP_WA_Send_Reply → HTTP_Save_Outbound
-  → IF_Appointment_Requested
+  → CODE_Fetch_Appt_Context → CODE_Build_AI_Prompt → HTTP_OpenAI_Analyze
+  → CODE_Parse_Response → CODE_Set_Direct_Reply → HTTP_WA_Send_Reply
+  → HTTP_Save_Outbound → IF_Appointment_Requested
       [true]  → HTTP_Get_Salesperson_By_Zone → CODE_Pick_Salesperson
-                → HTTP_Create_Appointment → HTTP_Update_Contact_Appointment
-                → HTTP_Save_Summary
-      [false] → HTTP_Save_Summary
-  (IF_End_Conversation is present but disconnected — kept for reference)
+                → CODE_Create_Or_Update_Appointment → HTTP_Update_Contact_Appointment
+                → HTTP_Save_Summary → CODE_Archive_Summary
+      [false] → HTTP_Save_Summary → CODE_Archive_Summary
 ```
 
 Key implementation notes:
+- `HTTP_Load_History` queries `interactions?contact_id=eq.{id}&session_id=eq.{conversation_session_id}&order=timestamp.asc` — filters by **both** contact_id AND session_id. History is scoped to the current session only.
+- `CODE_Fetch_Appt_Context` runs `runOnceForAllItems`, uses `$helpers.httpRequest()` to fetch the contact's existing scheduled appointments and all busy slots for the next 30 days. Results are injected into the system prompt as `busySlotsBlock` and `appointmentWarning`.
 - `CODE_Build_AI_Prompt` runs `runOnceForAllItems`, uses `$input.all()` to collect full interaction history. Injects today's date so GPT-4o can resolve relative days ("venerdì prossimo") to exact ISO dates. System prompt includes a REGOLE FONDAMENTALI section (no inventing specs/prices) and a split CATALOGO with separate sections for new machines (linking to official NH/JCB portals) and used machines (Agriaffaires link).
 - AI response format: natural text first, then `---METADATA---` separator, then JSON metadata. `CODE_Parse_Response` splits on the separator. **Do not re-add `response_format: {type: "json_object"}` to the OpenAI call** — it breaks natural language output.
 - `IF_Appointment_Requested` condition: `String($('CODE_Set_Direct_Reply').item.json.appointment_requested) == "true"` (string equality, reads from `CODE_Set_Direct_Reply` explicitly). **Do not use `$json.appointment_requested`** — after `HTTP_Save_Outbound` the Supabase response is empty. **Do not use `boolean.true` / `singleValue` operator** — it silently evaluates false when the value comes from a Code node.
+- `CODE_Create_Or_Update_Appointment`: checks for an existing `status=scheduled` appointment for the contact; PATCHes it if found, POSTs a new one if not. Prevents double-booking.
+- `CODE_Archive_Summary`: runs `runOnceForAllItems`, upserts a `conversation_summary` interaction (one per session per day — checks for existing row before inserting).
 - Appointment zone routing: `HTTP_Get_Salesperson_By_Zone` queries `users?zona=ilike.*{appointment_zone}*`, `CODE_Pick_Salesperson` takes the first match. Falls back to `trigger.salesperson_id` if no zone match found.
-- `HTTP_Save_Outbound`, `HTTP_Save_Summary`, and `HTTP_Create_Appointment` all reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*` — because after `HTTP_Save_Outbound` (Supabase 204), `$json` is empty.
+- `HTTP_Save_Outbound` and `HTTP_Save_Summary` reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*` — because after `HTTP_Save_Outbound` (Supabase 204), `$json` is empty.
 - Workflow 00 fetches `created_by_id` from contacts and passes it as `salesperson_id` to 01b.
+
+### n8n Code node constraint
+**NON usare HTTP calls nei Code node.** Né `$helpers.httpRequest()` né `fetch()` sono disponibili nel task runner esterno di questa istanza — entrambi falliscono silenziosamente (se in try/catch) o crashano. Tutte le chiamate HTTP a Supabase devono usare nodi **HTTP Request** nativi di n8n.
+
+Se un Code node deve produrre dati per il passo successivo senza HTTP, restituire valori statici/calcolati. Se servono dati da Supabase, aggiungere un nodo HTTP Request prima del Code node e referenziarne l'output con `$('NodeName').item.json`.
 
 ## Miscellaneous
 

@@ -38,7 +38,7 @@ export type Database = {
           outcome_appuntamento: string | null; motivo_chiusura: string | null;
           prossimo_followup: string | null; wa_contact_id: string | null;
           ultima_interazione: string | null; fonte: string | null; provincia: string | null;
-          conversation_summary: string | null;
+          conversation_summary: string | null; folder_id: number | null;
         };
         Insert: {
           id?: number; first_name: string; last_name: string;
@@ -56,7 +56,7 @@ export type Database = {
           outcome_appuntamento?: string | null; motivo_chiusura?: string | null;
           prossimo_followup?: string | null; wa_contact_id?: string | null;
           ultima_interazione?: string | null; fonte?: string | null; provincia?: string | null;
-          conversation_summary?: string | null;
+          conversation_summary?: string | null; folder_id?: number | null;
         };
         Update: {
           id?: number; first_name?: string; last_name?: string;
@@ -74,7 +74,7 @@ export type Database = {
           outcome_appuntamento?: string | null; motivo_chiusura?: string | null;
           prossimo_followup?: string | null; wa_contact_id?: string | null;
           ultima_interazione?: string | null; fonte?: string | null; provincia?: string | null;
-          conversation_summary?: string | null;
+          conversation_summary?: string | null; folder_id?: number | null;
         };
         Relationships: [
           { foreignKeyName: "contacts_created_by_id_fkey"; columns: ["created_by_id"]; referencedRelation: "users"; referencedColumns: ["id"] }
@@ -182,6 +182,30 @@ export type Database = {
           id?: number; tipo?: string; destinatario?: string; oggetto?: string | null;
           corpo?: string | null; stato?: string; created_at?: string; sent_at?: string | null;
         };
+        Relationships: [];
+      };
+      contact_folders: {
+        Row: { id: number; name: string; created_by_id: number | null; created_at: string };
+        Insert: { id?: number; name: string; created_by_id?: number | null; created_at?: string };
+        Update: { id?: number; name?: string; created_by_id?: number | null; created_at?: string };
+        Relationships: [];
+      };
+      tags: {
+        Row: { id: number; name: string; color: string; created_by_id: number | null; created_at: string };
+        Insert: { id?: number; name: string; color?: string; created_by_id?: number | null; created_at?: string };
+        Update: { id?: number; name?: string; color?: string; created_by_id?: number | null; created_at?: string };
+        Relationships: [];
+      };
+      contact_tags: {
+        Row: { contact_id: number; tag_id: number };
+        Insert: { contact_id: number; tag_id: number };
+        Update: { contact_id?: number; tag_id?: number };
+        Relationships: [];
+      };
+      folder_tags: {
+        Row: { folder_id: number; tag_id: number };
+        Insert: { folder_id: number; tag_id: number };
+        Update: { folder_id?: number; tag_id?: number };
         Relationships: [];
       };
     };

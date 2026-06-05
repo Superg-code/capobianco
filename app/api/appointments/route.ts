@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { getSessionOrToken } from "@/lib/api-auth";
 import { NextResponse } from "next/server";
+import { sendEmail } from "@/lib/email";
 
 export async function GET(req: Request) {
   const session = await getSessionOrToken(req);
@@ -85,6 +86,46 @@ export async function POST(req: Request) {
     .from("contacts")
     .update({ appointment_date: scheduled_at, appointment_status: "scheduled" })
     .eq("id", contact_id);
+
+  // Invia notifica email al venditore
+  try {
+    const spId = Number(data.salesperson_id ?? assignedSalesperson);
+    const { data: sp } = await supabase
+      .from("users")
+      .select("name, email")
+      .eq("id", spId)
+      .single();
+
+    if (sp?.email) {
+      const contact = data.contact as { first_name: string; last_name: string; company: string | null } | null;
+      const apptDate = new Date(scheduled_at).toLocaleString("it-IT", {
+        weekday: "long", day: "numeric", month: "long", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+
+      await sendEmail({
+        to: sp.email,
+        subject: `Nuovo appuntamento — ${contact?.first_name ?? ""} ${contact?.last_name ?? ""}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:480px">
+            <h2 style="color:#333">Nuovo appuntamento</h2>
+            <p>Ciao <strong>${sp.name}</strong>,</p>
+            <p>È stato creato un nuovo appuntamento nel CRM:</p>
+            <table style="border-collapse:collapse;width:100%">
+              <tr><td style="padding:6px 0;color:#555">Contatto</td><td style="font-weight:bold">${contact?.first_name ?? ""} ${contact?.last_name ?? ""}${contact?.company ? ` — ${contact.company}` : ""}</td></tr>
+              <tr><td style="padding:6px 0;color:#555">Data e ora</td><td style="font-weight:bold">${apptDate}</td></tr>
+              <tr><td style="padding:6px 0;color:#555">Durata</td><td>${duration_minutes ?? 60} min</td></tr>
+              ${title ? `<tr><td style="padding:6px 0;color:#555">Titolo</td><td>${title}</td></tr>` : ""}
+              ${notes ? `<tr><td style="padding:6px 0;color:#555">Note</td><td>${notes}</td></tr>` : ""}
+            </table>
+            <p style="margin-top:20px;color:#888;font-size:12px">Capobianco CRM</p>
+          </div>
+        `,
+      });
+    }
+  } catch (emailErr) {
+    console.error("Email notification error:", emailErr);
+  }
 
   return NextResponse.json({ appointment: data }, { status: 201 });
 }

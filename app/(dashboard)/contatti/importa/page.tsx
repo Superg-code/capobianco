@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, FileSpreadsheet } from "lucide-react";
+import { ArrowLeft, Upload, FileSpreadsheet, Folder } from "lucide-react";
 import ImportPreview from "@/components/contacts/ImportPreview";
 import type { ImportRowWithStatus } from "@/lib/duplicates";
 
@@ -18,11 +19,24 @@ type PreviewData = {
   };
 };
 
+type FolderItem = { id: number; name: string };
+
 export default function ImportaPage() {
+  const searchParams = useSearchParams();
+  const preselectedFolder = searchParams.get("folder");
+
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string>(preselectedFolder ?? "");
+
+  useEffect(() => {
+    fetch("/api/folders")
+      .then((r) => r.json())
+      .then((d) => setFolders(d.folders ?? []));
+  }, []);
 
   async function handleFile(file: File) {
     setError("");
@@ -85,10 +99,38 @@ export default function ImportaPage() {
           <ImportPreview
             rows={preview.rows}
             summary={preview.summary}
+            folderId={selectedFolderId ? Number(selectedFolderId) : null}
             onBack={() => setPreview(null)}
           />
         ) : (
           <div className="space-y-6">
+            {/* Selezione cartella */}
+            <div>
+              <label className="block text-sm font-semibold text-text mb-1.5">
+                <span className="flex items-center gap-1.5">
+                  <Folder className="w-4 h-4 text-brand-dark" />
+                  Importa in cartella (opzionale)
+                </span>
+              </label>
+              <select
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(e.target.value)}
+                className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand bg-white"
+              >
+                <option value="">Nessuna cartella</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+              {!folders.length && (
+                <p className="text-xs text-text-muted mt-1">
+                  Nessuna cartella ancora.{" "}
+                  <Link href="/contatti" className="text-brand-dark hover:underline">Creane una</Link>{" "}
+                  dalla sezione Contatti prima di importare.
+                </p>
+              )}
+            </div>
+
             {/* Dropzone */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragging(true); }}

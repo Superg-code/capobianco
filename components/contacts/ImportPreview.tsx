@@ -15,10 +15,11 @@ type Props = {
     withinFile: number;
     invalid: number;
   };
+  folderId: number | null;
   onBack: () => void;
 };
 
-export default function ImportPreview({ rows: initialRows, summary, onBack }: Props) {
+export default function ImportPreview({ rows: initialRows, summary, folderId, onBack }: Props) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [loading, setLoading] = useState(false);
@@ -50,7 +51,7 @@ export default function ImportPreview({ rows: initialRows, summary, onBack }: Pr
       const res = await fetch("/api/contacts/import/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows }),
+        body: JSON.stringify({ rows, folder_id: folderId ?? null }),
       });
       const data = await res.json();
       if (!res.ok) {

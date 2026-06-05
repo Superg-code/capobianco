@@ -43,6 +43,22 @@ export type Contact = {
   fonte: string | null;
   provincia: string | null;
   conversation_summary: string | null;
+  folder_id: number | null;
+};
+
+export type ContactFolder = {
+  id: number;
+  name: string;
+  created_by_id: number | null;
+  created_at: string;
+};
+
+export type Tag = {
+  id: number;
+  name: string;
+  color: string;
+  created_by_id: number | null;
+  created_at: string;
 };
 
 export type Sale = {
