@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, Clock, User, Building2, Trash2, Check, Phone, MessageSquare } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Clock, User, Building2, Trash2, Check, Phone, MessageSquare, Mail, AlertCircle } from "lucide-react";
 
 type Contact = { id: number; first_name: string; last_name: string; company: string | null };
 type Salesperson = { id: number; name: string; zona: string | null };
@@ -89,6 +89,7 @@ export default function CalendarioClient({
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [emailNotice, setEmailNotice] = useState<{ sent: boolean; to?: string; error?: string } | null>(null);
   const [form, setForm] = useState({
     contact_id: "",
     salesperson_id: String(currentUserId),
@@ -164,7 +165,6 @@ export default function CalendarioClient({
       const savedMonth = apptMonth(saved.scheduled_at);
 
       if (selected) {
-        // Update or remove from calendar grid (might have changed month)
         if (savedMonth === month) {
           setCalendarAppts(prev => prev.map(a => a.id === selected.id ? saved : a));
         } else {
@@ -172,11 +172,12 @@ export default function CalendarioClient({
         }
         setAllAppts(prev => prev.map(a => a.id === selected.id ? saved : a));
       } else {
-        // New appointment: add to grid only if it's in the current month
         if (savedMonth === month) {
           setCalendarAppts(prev => [...prev, saved].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
         }
         setAllAppts(prev => [...prev, saved].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
+        // Mostra esito email solo per nuovi appuntamenti
+        if (data.email) setEmailNotice(data.email);
       }
 
       setShowForm(false);
@@ -236,6 +237,25 @@ export default function CalendarioClient({
 
   return (
     <div className="space-y-5">
+      {/* Banner esito email */}
+      {emailNotice && (
+        <div className={`flex items-start gap-3 px-4 py-3 rounded-xl border text-sm ${
+          emailNotice.sent
+            ? "bg-green-50 border-green-200 text-green-800"
+            : "bg-amber-50 border-amber-200 text-amber-800"
+        }`}>
+          {emailNotice.sent
+            ? <Mail className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            : <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+          <div className="flex-1">
+            {emailNotice.sent
+              ? <span>Email inviata al venditore (<strong>{emailNotice.to}</strong>)</span>
+              : <span>Email <strong>non inviata</strong>{emailNotice.to ? ` a ${emailNotice.to}` : ""} — {emailNotice.error}</span>}
+          </div>
+          <button onClick={() => setEmailNotice(null)} className="p-0.5 hover:opacity-70"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

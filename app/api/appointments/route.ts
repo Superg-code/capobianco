@@ -88,6 +88,7 @@ export async function POST(req: Request) {
     .eq("id", contact_id);
 
   // Invia notifica email al venditore
+  let emailResult: { sent: boolean; to?: string; error?: string } = { sent: false };
   try {
     const spId = Number(data.salesperson_id ?? assignedSalesperson);
     const { data: sp } = await supabase
@@ -103,7 +104,7 @@ export async function POST(req: Request) {
         hour: "2-digit", minute: "2-digit",
       });
 
-      await sendEmail({
+      const result = await sendEmail({
         to: sp.email,
         subject: `Nuovo appuntamento — ${contact?.first_name ?? ""} ${contact?.last_name ?? ""}`,
         html: `
@@ -122,10 +123,20 @@ export async function POST(req: Request) {
           </div>
         `,
       });
+      emailResult = { ...result, to: sp.email };
+      if (!result.sent) {
+        console.error(`[appointments] Email fallita a ${sp.email}:`, result.error);
+      } else {
+        console.log(`[appointments] Email inviata a ${sp.email}`);
+      }
+    } else {
+      emailResult = { sent: false, error: "Venditore senza email nel DB" };
+      console.warn("[appointments] Venditore senza email — notifica saltata");
     }
   } catch (emailErr) {
-    console.error("Email notification error:", emailErr);
+    emailResult = { sent: false, error: String(emailErr) };
+    console.error("[appointments] Eccezione email:", emailErr);
   }
 
-  return NextResponse.json({ appointment: data }, { status: 201 });
+  return NextResponse.json({ appointment: data, email: emailResult }, { status: 201 });
 }
