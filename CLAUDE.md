@@ -27,6 +27,8 @@ SUPABASE_ANON_KEY=sb_publishable_...
 JWT_SECRET=<random string, 32+ chars>
 CRM_API_TOKEN=<static Bearer token for n8n>
 N8N_WEBHOOK_BASE_URL=https://n8n.srv1533428.hstgr.cloud  # used by start-whatsapp route
+RESEND_API_KEY=re_...                                      # Resend API key for email notifications
+EMAIL_FROM=Capobianco CRM <noreply@capobiancocrm.com>     # optional, this is the default
 
 # WhatsApp Business API (Meta)
 WHATSAPP_ACCESS_TOKEN=<permanent System User token>
@@ -44,9 +46,16 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=<string for Meta webhook verification>
 
 `lib/supabase.ts` exports a typed singleton `supabase` client (`createClient<Database>`) with a `global._supabase` pattern to survive Next.js hot-reloads. The `Database` type is in `types/supabase.ts` with explicit non-circular `Row`/`Insert`/`Update` types per table — required because Supabase's generic inference collapses to `never` without them.
 
-Tables: `users`, `contacts`, `sales`, `activities`, `interactions`, `products`, `notification_queue`, `appointments`.
+Core tables: `users`, `contacts`, `sales`, `activities`, `interactions`, `products`, `notification_queue`, `appointments`.
 
-`lib/db.ts` exports only TypeScript types (`User`, `Contact`, `Sale`, `Activity`, `Appointment`) — no database connection.
+Folder/tag tables (migration v2, added via Supabase SQL Editor — see `scripts/schema.sql`):
+- `contact_folders` — named folders for contacts (`id`, `name`, `created_by_id`)
+- `tags` — color-coded labels (`id`, `name`, `color`)
+- `contact_tags` — many-to-many join (`contact_id`, `tag_id`)
+- `folder_tags` — many-to-many join (`folder_id`, `tag_id`)
+- `contacts.folder_id` — FK to `contact_folders`, nullable
+
+`lib/db.ts` exports only TypeScript types (`User`, `Contact`, `Sale`, `Activity`, `Appointment`, `ContactFolder`, `Tag`) — no database connection.
 
 ### Auth
 - JWT stored in an **httpOnly cookie** named `crm_token` (8h expiry).
@@ -66,6 +75,32 @@ Admin creates a salesperson in `/impostazioni` with nome/cognome/zona/email — 
 Server Components query Supabase directly. Client Components fetch via API routes. No shared state library — Server Components pass initial data as props (e.g., `LeaderboardClient`, `SalesKanban`, `UsersManager`, `CalendarioClient`).
 
 Nested join results from Supabase (e.g., `contact:contacts(first_name,last_name)`, `salesperson:users!salesperson_id(name)`) come back as nested objects and are typed inline in each route.
+
+### Contact Folders & Tags
+
+Contacts can be organized into named folders (`contact_folders` table). Each contact has a nullable `folder_id`. Two special **virtual folders** exist as smart filters (no DB row — computed at query time):
+- **RSA** — `wa_contact_id IS NOT NULL AND ultima_interazione IS NOT NULL AND appointment_date IS NULL` (replied via WA, no appointment booked)
+- **NR** — `wa_contact_id IS NOT NULL AND ultima_interazione IS NULL` (never replied)
+
+API routes: `GET/POST /api/folders`, `PATCH/DELETE /api/folders/[id]`, `POST/DELETE /api/folders/[id]/tags`.
+
+Tags are color-coded labels (`GET/POST /api/tags`, `DELETE /api/tags/[id]`). Contacts can have multiple tags via `GET/POST /api/contacts/[id]/tags` and `DELETE /api/contacts/[id]/tags/[tagId]`.
+
+`app/(dashboard)/contatti/FoldersPanel.tsx` renders the sidebar with folder list (including RSA/NR virtual entries), counts, rename/delete actions, and a per-folder bulk WhatsApp button (hover to reveal). The WA button calls `GET /api/contacts/bulk-whatsapp?folder_id=<id>` then iterates `POST /api/contacts/{id}/start-whatsapp`.
+
+The contacts page (`app/(dashboard)/contatti/page.tsx`) reads `?folder=<id|RSA|NR>` from the URL to filter contacts. Tag badges for all contacts on the current page are loaded in a single `contact_tags` batch query (avoids N+1).
+
+### Email Notifications
+
+`lib/email.ts` wraps the **Resend API** (`resend` npm package). Domain `capobiancocrm.com` is verified on Resend with DNS records on Vercel. Default sender: `Capobianco CRM <noreply@capobiancocrm.com>`.
+
+Email is sent in two places:
+1. **Calendar creation** (`POST /api/appointments`) — sends to the assigned salesperson's `users.email` after inserting the appointment.
+2. **WhatsApp booking** (`HTTP_Email_Notify` node in n8n workflow 01b) — calls Resend directly from n8n using the API key, since n8n writes appointments to Supabase directly and never calls `/api/appointments`.
+
+`GET /api/test-email?to=<address>` (admin only) — diagnostic endpoint to verify Resend works from Vercel without creating a real appointment.
+
+`POST /api/appointments/email-notify` (admin/Bearer auth) — standalone endpoint that accepts `{ appointment_id }`, fetches appointment + salesperson, sends email. Created for n8n use but currently n8n calls Resend directly.
 
 ### Appointments
 `/api/appointments` (GET/POST) and `/api/appointments/[id]` (PATCH/DELETE) use `getSessionOrToken` — accessible from both browser and n8n. Salespersons see only their own appointments; admins see all. POST also updates `contacts.appointment_date` and `contacts.appointment_status`. The `/calendario` page is a full monthly calendar with chip-per-day display and a chronological list below the grid.
@@ -117,7 +152,7 @@ API routes that n8n calls accept `Authorization: Bearer <CRM_API_TOKEN>` via `li
 | Route | Description |
 |---|---|
 | `/dashboard` | Stats overview (Server Component) |
-| `/contatti` | Contact list + Excel import (Server + `ContactForm` client) |
+| `/contatti` | Contact list with folder sidebar, tags, bulk WA per folder, Excel import |
 | `/vendite` | Sales Kanban (`SalesKanban` client, drag-and-drop) |
 | `/classifica` | Leaderboard (`LeaderboardClient`, calls `get_leaderboard` RPC) |
 | `/impostazioni` | Admin-only user management (`UsersManager` client) |
@@ -143,7 +178,7 @@ TRIGGER_CRM_Avvio → HTTP_WA_Greeting (template) → HTTP_Save_Greeting
 
 `HTTP_Set_WA_Contact_ID` normalizes the phone from the CRM format (`+39 388 385 6494`) to E.164 without `+` (`393883856494`) and writes it to `contacts.wa_contact_id`. This is required so that `00 WhatsApp Ingresso` can match the contact when the customer replies.
 
-### Workflow 01b node sequence (18 nodes)
+### Workflow 01b node sequence (21 nodes)
 
 ```
 TRIGGER_AI_Turn → RESPOND_Ack → HTTP_Save_Inbound → HTTP_Load_History
@@ -151,21 +186,23 @@ TRIGGER_AI_Turn → RESPOND_Ack → HTTP_Save_Inbound → HTTP_Load_History
   → CODE_Parse_Response → CODE_Set_Direct_Reply → HTTP_WA_Send_Reply
   → HTTP_Save_Outbound → IF_Appointment_Requested
       [true]  → HTTP_Get_Salesperson_By_Zone → CODE_Pick_Salesperson
-                → CODE_Create_Or_Update_Appointment → HTTP_Update_Contact_Appointment
-                → HTTP_Save_Summary → CODE_Archive_Summary
-      [false] → HTTP_Save_Summary → CODE_Archive_Summary
+                → HTTP_Delete_Old_Appointment → HTTP_Create_Appointment
+                → HTTP_Email_Notify → HTTP_Update_Contact_Appointment
+                → HTTP_Save_Summary → IF_Has_Summary → HTTP_Insert_Summary
+      [false] → HTTP_Save_Summary → IF_Has_Summary → HTTP_Insert_Summary
 ```
 
 Key implementation notes:
 - `HTTP_Load_History` queries `interactions?contact_id=eq.{id}&session_id=eq.{conversation_session_id}&order=timestamp.asc` — filters by **both** contact_id AND session_id. History is scoped to the current session only.
-- `CODE_Fetch_Appt_Context` runs `runOnceForAllItems`, uses `$helpers.httpRequest()` to fetch the contact's existing scheduled appointments and all busy slots for the next 30 days. Results are injected into the system prompt as `busySlotsBlock` and `appointmentWarning`.
-- `CODE_Build_AI_Prompt` runs `runOnceForAllItems`, uses `$input.all()` to collect full interaction history. Injects today's date so GPT-4o can resolve relative days ("venerdì prossimo") to exact ISO dates. System prompt includes a REGOLE FONDAMENTALI section (no inventing specs/prices) and a split CATALOGO with separate sections for new machines (linking to official NH/JCB portals) and used machines (Agriaffaires link).
-- AI response format: natural text first, then `---METADATA---` separator, then JSON metadata. `CODE_Parse_Response` splits on the separator. **Do not re-add `response_format: {type: "json_object"}` to the OpenAI call** — it breaks natural language output.
-- `IF_Appointment_Requested` condition: `String($('CODE_Set_Direct_Reply').item.json.appointment_requested) == "true"` (string equality, reads from `CODE_Set_Direct_Reply` explicitly). **Do not use `$json.appointment_requested`** — after `HTTP_Save_Outbound` the Supabase response is empty. **Do not use `boolean.true` / `singleValue` operator** — it silently evaluates false when the value comes from a Code node.
-- `CODE_Create_Or_Update_Appointment`: checks for an existing `status=scheduled` appointment for the contact; PATCHes it if found, POSTs a new one if not. Prevents double-booking.
-- `CODE_Archive_Summary`: runs `runOnceForAllItems`, upserts a `conversation_summary` interaction (one per session per day — checks for existing row before inserting).
-- Appointment zone routing: `HTTP_Get_Salesperson_By_Zone` queries `users?zona=ilike.*{appointment_zone}*`, `CODE_Pick_Salesperson` takes the first match. Falls back to `trigger.salesperson_id` if no zone match found.
-- `HTTP_Save_Outbound` and `HTTP_Save_Summary` reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*` — because after `HTTP_Save_Outbound` (Supabase 204), `$json` is empty.
+- `CODE_Fetch_Appt_Context` runs `runOnceForAllItems` and returns empty arrays (`contact_existing_appts: [], busy_slots: []`) — HTTP calls inside Code nodes are disabled on this n8n instance (see constraint below).
+- `CODE_Build_AI_Prompt` runs `runOnceForAllItems`. Injects today's date so the AI can resolve relative days ("venerdì prossimo") to exact ISO dates. System prompt includes REGOLE, CATALOGO (New Holland / JCB portals + Agriaffaires for used), and incentivi.
+- AI response format: natural text first, then `---METADATA---` separator, then JSON metadata. `CODE_Parse_Response` splits on the separator. **Do not re-add `response_format: {type: "json_object"}`** — it breaks natural language output.
+- `IF_Appointment_Requested` condition: `String($('CODE_Set_Direct_Reply').item.json.appointment_requested) == "true"` (string equality, reads from `CODE_Set_Direct_Reply` explicitly). **Do not use `$json.appointment_requested`** — after `HTTP_Save_Outbound` (Supabase 204) `$json` is empty. **Do not use `boolean.true` / `singleValue` operator** — it silently evaluates false from Code node output.
+- `HTTP_Delete_Old_Appointment` deletes any existing `status=scheduled` appointment for the contact before creating the new one (prevents double-booking).
+- `HTTP_Get_Salesperson_By_Zone` selects `id,name,zona,email` — the `email` field is used by `HTTP_Email_Notify`.
+- `CODE_Pick_Salesperson` extracts `resolved_salesperson_id`, `resolved_salesperson_email`, `resolved_salesperson_name` from the matched user row.
+- `HTTP_Email_Notify` calls **Resend API directly** (`POST https://api.resend.com/emails`) with the Resend API key hardcoded in the node header. Sends to `resolved_salesperson_email` (from the zone-matched user). `continueOnFail: true` — email failure does not block the workflow.
+- `HTTP_Save_Outbound` and all subsequent nodes reference `$('CODE_Set_Direct_Reply').item.json.*` explicitly — **not** `$json.*`.
 - Workflow 00 fetches `created_by_id` from contacts and passes it as `salesperson_id` to 01b.
 
 ### n8n Code node constraint
