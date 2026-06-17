@@ -39,6 +39,7 @@ export type Database = {
           prossimo_followup: string | null; wa_contact_id: string | null;
           ultima_interazione: string | null; fonte: string | null; provincia: string | null;
           conversation_summary: string | null; folder_id: number | null;
+          ricontattare_dopo: boolean | null;
         };
         Insert: {
           id?: number; first_name: string; last_name: string;
@@ -57,6 +58,7 @@ export type Database = {
           prossimo_followup?: string | null; wa_contact_id?: string | null;
           ultima_interazione?: string | null; fonte?: string | null; provincia?: string | null;
           conversation_summary?: string | null; folder_id?: number | null;
+          ricontattare_dopo?: boolean | null;
         };
         Update: {
           id?: number; first_name?: string; last_name?: string;
@@ -75,6 +77,7 @@ export type Database = {
           prossimo_followup?: string | null; wa_contact_id?: string | null;
           ultima_interazione?: string | null; fonte?: string | null; provincia?: string | null;
           conversation_summary?: string | null; folder_id?: number | null;
+          ricontattare_dopo?: boolean | null;
         };
         Relationships: [
           { foreignKeyName: "contacts_created_by_id_fkey"; columns: ["created_by_id"]; referencedRelation: "users"; referencedColumns: ["id"] }

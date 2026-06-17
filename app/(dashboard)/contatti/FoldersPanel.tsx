@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   FolderOpen, Folder, Plus, Pencil, Trash2, X, Check,
   Users, MessageSquare, PhoneOff, MessageCircle,
-  Loader2, CheckCircle2, AlertCircle,
+  Loader2, CheckCircle2, AlertCircle, PhoneForwarded, Star,
 } from "lucide-react";
 
 type FolderItem = {
@@ -21,6 +21,8 @@ type Props = {
   totalContacts: number;
   rsaCount: number;
   nrCount: number;
+  rdCount: number;
+  apCount: number;
 };
 
 type WaPhase = "idle" | "confirm" | "running" | "done";
@@ -33,6 +35,8 @@ export default function FoldersPanel({
   totalContacts,
   rsaCount,
   nrCount,
+  rdCount,
+  apCount,
 }: Props) {
   const router = useRouter();
   const [folders, setFolders] = useState(initialFolders);
@@ -201,6 +205,32 @@ export default function FoldersPanel({
           <span className="flex-1 truncate">NR</span>
           {nrCount > 0 && (
             <span className="text-xs font-semibold tabular-nums">{nrCount}</span>
+          )}
+        </div>
+
+        {/* RD - Ricontattare Dopo */}
+        <div
+          onClick={() => navigate("RD")}
+          className={`${itemBase} ${activeFolder === "RD" ? activeClass : inactiveClass}`}
+          title="Ha chiesto di essere ricontattato in un altro momento"
+        >
+          <PhoneForwarded className="w-4 h-4 flex-shrink-0 text-blue-400" />
+          <span className="flex-1 truncate">RD</span>
+          {rdCount > 0 && (
+            <span className="text-xs font-semibold tabular-nums">{rdCount}</span>
+          )}
+        </div>
+
+        {/* AP - Alto Potenziale */}
+        <div
+          onClick={() => navigate("AP")}
+          className={`${itemBase} ${activeFolder === "AP" ? activeClass : inactiveClass}`}
+          title="Ha mandato più messaggi su WhatsApp ma non ha preso appuntamento"
+        >
+          <Star className="w-4 h-4 flex-shrink-0 text-yellow-500" />
+          <span className="flex-1 truncate">AP</span>
+          {apCount > 0 && (
+            <span className="text-xs font-semibold tabular-nums">{apCount}</span>
           )}
         </div>
 

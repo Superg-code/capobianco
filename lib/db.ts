@@ -44,6 +44,7 @@ export type Contact = {
   provincia: string | null;
   conversation_summary: string | null;
   folder_id: number | null;
+  ricontattare_dopo: boolean | null;
 };
 
 export type ContactFolder = {

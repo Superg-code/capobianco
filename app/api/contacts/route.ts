@@ -94,7 +94,6 @@ export async function POST(req: Request) {
       pipeline_stage: body.pipeline_stage ?? body.stato ?? "Lead",
       fonte:     body.fonte ?? null,
       provincia: body.provincia ?? null,
-      ultima_interazione: new Date().toISOString(),
     })
     .select()
     .single();

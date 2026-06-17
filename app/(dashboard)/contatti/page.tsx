@@ -47,6 +47,36 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
     .not("wa_contact_id", "is", null)
     .is("ultima_interazione", null);
 
+  // Conteggio RD (ricontattare dopo, senza appuntamento)
+  const { count: rdCount } = await supabase
+    .from("contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("ricontattare_dopo", true)
+    .is("appointment_date", null);
+
+  // AP: contatti con >= 2 messaggi WhatsApp inbound e senza appuntamento
+  const AP_THRESHOLD = 2;
+  const { data: inboundData } = await supabase
+    .from("interactions")
+    .select("contact_id")
+    .eq("tipo", "whatsapp_inbound");
+
+  const inboundCounts: Record<number, number> = {};
+  for (const r of inboundData ?? []) {
+    inboundCounts[r.contact_id] = (inboundCounts[r.contact_id] ?? 0) + 1;
+  }
+  const apIds = Object.entries(inboundCounts)
+    .filter(([, n]) => n >= AP_THRESHOLD)
+    .map(([id]) => Number(id));
+
+  const { count: apCount } = apIds.length > 0
+    ? await supabase
+        .from("contacts")
+        .select("id", { count: "exact", head: true })
+        .in("id", apIds)
+        .is("appointment_date", null)
+    : { count: 0 };
+
   // Query contatti con filtro cartella
   let query = supabase
     .from("contacts")
@@ -66,6 +96,18 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
     query = query
       .not("wa_contact_id", "is", null)
       .is("ultima_interazione", null);
+  } else if (folderParam === "RD") {
+    query = query
+      .eq("ricontattare_dopo", true)
+      .is("appointment_date", null);
+  } else if (folderParam === "AP") {
+    if (apIds.length > 0) {
+      query = query
+        .in("id", apIds)
+        .is("appointment_date", null);
+    } else {
+      query = query.in("id", [-1]);
+    }
   } else if (folderParam) {
     query = query.eq("folder_id", Number(folderParam));
   }
@@ -114,6 +156,8 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
   const folderLabel =
     folderParam === "RSA" ? "RSA — Risposto, senza appuntamento"
     : folderParam === "NR" ? "NR — Non risposto"
+    : folderParam === "RD" ? "RD — Ricontattare dopo"
+    : folderParam === "AP" ? "AP — Alto potenziale"
     : folderParam
     ? (foldersWithCount.find((f) => String(f.id) === folderParam)?.name ?? "Cartella")
     : null;
@@ -160,6 +204,8 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
             totalContacts={totalContacts ?? 0}
             rsaCount={rsaCount ?? 0}
             nrCount={nrCount ?? 0}
+            rdCount={rdCount ?? 0}
+            apCount={apCount ?? 0}
           />
         </div>
 

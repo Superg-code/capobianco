@@ -75,7 +75,7 @@ export async function PATCH(
     "richiede_incentivi", "note_commerciali", "appointment_date",
     "appointment_status", "outcome_appuntamento", "motivo_chiusura",
     "prossimo_followup", "wa_contact_id", "ultima_interazione",
-    "fonte", "provincia", "conversation_summary",
+    "fonte", "provincia", "conversation_summary", "ricontattare_dopo",
   ] as const;
 
   const n8nFields: Record<string, unknown> = {};

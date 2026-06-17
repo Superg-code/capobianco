@@ -6,7 +6,7 @@ import ContactForm from "@/components/contacts/ContactForm";
 import {
   Mail, Phone, Building2, MapPin, Edit, Trash2, Calendar,
   MessageCircle, Loader2, CheckCircle2, Clock, ChevronDown,
-  ChevronUp, Tag, Plus, X, Folder, Check,
+  ChevronUp, Tag, Plus, X, Folder, Check, PhoneForwarded,
 } from "lucide-react";
 import type { Contact } from "@/lib/db";
 
@@ -40,6 +40,7 @@ export default function ContactDetailClient({
   const [waStatus, setWaStatus] = useState<"idle" | "sent" | "error">("idle");
   const [waError, setWaError] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [isRd, setIsRd] = useState(contact.ricontattare_dopo ?? false);
 
   // Tags state
   const [contactTags, setContactTags] = useState<TagItem[]>(initialTags);
@@ -75,6 +76,16 @@ export default function ContactDetailClient({
     await fetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
     router.push("/contatti");
     router.refresh();
+  }
+
+  async function toggleRd() {
+    const newVal = !isRd;
+    setIsRd(newVal);
+    await fetch(`/api/contacts/${contact.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ricontattare_dopo: newVal }),
+    });
   }
 
   async function handleStartWhatsApp() {
@@ -397,6 +408,18 @@ export default function ContactDetailClient({
               Conversazione WhatsApp attiva
             </div>
           )}
+
+          <button
+            onClick={toggleRd}
+            className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border transition-colors w-full justify-center ${
+              isRd
+                ? "border-blue-200 bg-blue-50 text-blue-700 font-semibold"
+                : "border-gray-200 text-text-muted hover:border-blue-200 hover:text-blue-600"
+            }`}
+          >
+            <PhoneForwarded className="w-3.5 h-3.5 flex-shrink-0" />
+            {isRd ? "Ricontattare dopo (attivo)" : "Segna: ricontattare dopo"}
+          </button>
 
           {waStatus === "sent" ? (
             <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2">
