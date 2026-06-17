@@ -75,6 +75,7 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
         .select("id", { count: "exact", head: true })
         .in("id", apIds)
         .is("appointment_date", null)
+        .or("ricontattare_dopo.is.null,ricontattare_dopo.eq.false")
     : { count: 0 };
 
   // Query contatti con filtro cartella
@@ -104,7 +105,8 @@ export default async function ContattiPage({ searchParams }: { searchParams: Sea
     if (apIds.length > 0) {
       query = query
         .in("id", apIds)
-        .is("appointment_date", null);
+        .is("appointment_date", null)
+        .or("ricontattare_dopo.is.null,ricontattare_dopo.eq.false");
     } else {
       query = query.in("id", [-1]);
     }
